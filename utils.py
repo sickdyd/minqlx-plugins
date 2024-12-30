@@ -43,41 +43,44 @@ def get_json_from_redis(self, key):
         self.logger.exception(f"Error loading data from Redis: {e}")
     return None
 
-def table(headers, rows):
+def table(headers, rows, title=None):
     """
-    Given a list of headers and a list of rows, return a formatted table with separators for each row and a closing separator line.
+    Given a list of headers and a list of rows, return a formatted table with a title, separators for each row, and a closing separator line.
     """
     if not headers or not rows:
         return "No data to display."
 
-    # Minimum column width
     MIN_COLUMN_WIDTH = 3
 
-    # Function to strip formatting codes (e.g., ^7)
     def strip_formatting(text):
         return re.sub(r"\^\d", "", str(text))
 
-    # Calculate column widths based on the widest element (header or cell in a row)
+    # Calculate column widths
     max_lengths = [max(len(strip_formatting(header)), MIN_COLUMN_WIDTH) for header in headers]
     for row in rows:
         for i, cell in enumerate(row):
             max_lengths[i] = max(max_lengths[i], len(strip_formatting(cell)))
 
-    # Format headers
-    header_line = " | ".join(header.ljust(max_lengths[i]) for i, header in enumerate(headers))
-    separator_line = "-+-".join("-" * length for length in max_lengths)
+    # Format headers (align left)
+    header_line = "| " + " | ".join(header.ljust(max_lengths[i]) for i, header in enumerate(headers)) + " |"
+    separator_line = "+-" + "-+-".join("-" * length for length in max_lengths) + "-+"
 
-    # Format each row
+    # Format each row (align left for cells)
     row_lines = []
     for row in rows:
-        # Format each cell while keeping formatting codes
-        formatted_row = " | ".join(
+        formatted_row = "| " + " | ".join(
             f"{cell}{' ' * (max_lengths[i] - len(strip_formatting(cell)))}"
             for i, cell in enumerate(row)
-        )
+        ) + " |"
         row_lines.append(formatted_row)
 
-    # Combine all parts into a table with a closing separator line
-    return "\n".join([header_line, separator_line] + row_lines + [separator_line])
+    # Handle the title
+    if title:
+        total_table_width = len(separator_line)  # Length of the separator line includes borders
+        centered_title = f"{title}".center(total_table_width - 2)  # Adjust for side borders
+        title_line = f"+{'-' * (total_table_width - 2)}+\n|{centered_title}|\n{separator_line}\n"
+    else:
+        title_line = ""
 
-    # player.tell(f"\n{table(headers, rows)}")
+    # Combine everything into the final table
+    return title_line + "\n".join([header_line, separator_line] + row_lines + [separator_line])

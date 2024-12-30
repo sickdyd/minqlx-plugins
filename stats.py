@@ -32,6 +32,11 @@ class stats(minqlx.Plugin):
             self.logger.exception(f"Error clearing game stats: {e}")
 
     def handle_stats(self, stats):
+        if stat["DATA"].get("WARMUP", False):
+            return
+        if stat["DATA"].get("ABORTED", False):
+            return
+
         if stats.get("TYPE") == "PLAYER_STATS":
             self.logger.info(f"Received player stats: {stats}")
             data = stats.get("DATA", {})
@@ -74,8 +79,6 @@ class stats(minqlx.Plugin):
         url = f"http://qlstats.net/player/{player.steam_id}.json"
         fetch(self, url, self.handle_get_player_id, player, channel)
 
-    # Handlers
-
     @minqlx.thread
     def handle_local_stats(self, local_stats, player, channel):
         relevant_weapons = {
@@ -89,10 +92,8 @@ class stats(minqlx.Plugin):
             "SHOTGUN": "SG",
         }
 
-        # Initialize accumulators for total hits and shots
-        weapon_totals = {short_name: {"hits": 0, "shots": 0} for short_name in relevant_weapons.values()}
+        weapon_totals = {short_name: {"hits": 0, "shots": 0, "games": 0} for short_name in relevant_weapons.values()}
 
-        # Process local stats and accumulate totals
         for game in local_stats:
             if "DATA" in game and "WEAPONS" in game["DATA"]:
                 for weapon, weapon_data in game["DATA"]["WEAPONS"].items():
@@ -100,31 +101,33 @@ class stats(minqlx.Plugin):
                         short_name = relevant_weapons[weapon]
                         hits = weapon_data.get("H", 0)
                         shots = weapon_data.get("S", 0)
+
                         weapon_totals[short_name]["hits"] += hits
                         weapon_totals[short_name]["shots"] += shots
 
-        # Calculate average accuracy for each weapon
+                        if shots > 0:
+                            weapon_totals[short_name]["games"] += 1
+
         weapons = {}
         for short_name, totals in weapon_totals.items():
             total_hits = totals["hits"]
             total_shots = totals["shots"]
+            games_used = totals["games"]
 
-            if total_shots > 0:
+            if games_used > 0 and total_shots > 0:
                 accuracy = round(total_hits / total_shots * 100)
                 if accuracy > MEDIUM_ACCURACY_PERCENTAGE_THRESHOLD:
-                    color = "^2"  # Green
+                    color = "^2"
                 elif LOW_ACCURACY_PERCENTAGE_THRESHOLD <= accuracy <= MEDIUM_ACCURACY_PERCENTAGE_THRESHOLD:
-                    color = "^3"  # Yellow
+                    color = "^3"
                 else:
-                    color = "^1"  # Red
+                    color = "^1"
                 weapons[short_name] = f"{color}{accuracy}^7"
             else:
-                weapons[short_name] = "-"  # No shots fired
+                weapons[short_name] = "-"
 
-        # Generate the local stats summary
         local_stats_summary = ", ".join(f"{abbreviation}: {weapons.get(abbreviation, '-')}" for abbreviation in relevant_weapons.values())
 
-        # Send the summary to the player
         channel.reply(f"{player.name}'s last {len(local_stats)} games stats from local data:")
         channel.reply(f"{local_stats_summary}")
 
