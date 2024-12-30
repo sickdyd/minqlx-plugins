@@ -12,6 +12,10 @@ class leaderboards(minqlx.Plugin):
             usage="!lb <type>\nAvailable types: damage, kills, deaths, snipers, attackers, winners, losers, accuracy, all"
         )
 
+    def send_multiline_message(self, player, message):
+        for line in message.splitlines():
+            player.tell(line)
+
     def clean_chat(self, player):
         player.tell(" ")
         player.tell(" ")
@@ -234,7 +238,7 @@ class leaderboards(minqlx.Plugin):
 
         leaderboard = table(headers, rows, "Damage Dealt (last 10 games)")
 
-        player.tell(leaderboard)
+        self.send_multiline_message(player, leaderboard)
 
     @minqlx.thread
     def handle_snipers_leaderboard(self, stats_data, player, channel):
@@ -282,7 +286,7 @@ class leaderboards(minqlx.Plugin):
 
         leaderboard = table(headers, rows, "Sniper Medals (last 10 games)")
 
-        player.tell(leaderboard)
+        self.send_multiline_message(player, leaderboard)
 
     @minqlx.thread
     def handle_attackers_leaderboard(self, stats_data, player, channel):
@@ -334,7 +338,7 @@ class leaderboards(minqlx.Plugin):
 
         leaderboard = table(headers, rows, "Attack Medals (last 10 games)")
 
-        player.tell(leaderboard)
+        self.send_multiline_message(player, leaderboard)
 
     @minqlx.thread
     def handle_kills_leaderboard(self, stats_data, player, channel):
@@ -379,7 +383,7 @@ class leaderboards(minqlx.Plugin):
 
         leaderboard = table(headers, rows, "Kills (last 10 games)")
 
-        player.tell(leaderboard)
+        self.send_multiline_message(player, leaderboard)
 
     @minqlx.thread
     def handle_deaths_leaderboard(self, stats_data, player, channel):
@@ -414,7 +418,7 @@ class leaderboards(minqlx.Plugin):
 
         leaderboard = table(headers, rows, "Deaths (last 10 games)")
 
-        player.tell(leaderboard)
+        self.send_multiline_message(player, leaderboard)
 
     @minqlx.thread
     def handle_winners_leaderboard(self, stats_data, player, channel):
@@ -446,7 +450,7 @@ class leaderboards(minqlx.Plugin):
 
         leaderboard = table(headers, rows, "Wins (last 10 games)")
 
-        player.tell(leaderboard)
+        self.send_multiline_message(player, leaderboard)
 
     @minqlx.thread
     def handle_losers_leaderboard(self, stats_data, player, channel):
@@ -478,7 +482,7 @@ class leaderboards(minqlx.Plugin):
 
         leaderboard = table(headers, rows, "Losses (last 10 games)")
 
-        player.tell(leaderboard)
+        self.send_multiline_message(player, leaderboard)
 
     @minqlx.thread
     def handle_accuracy_leaderboard(self, stats_data, player, channel):
@@ -553,4 +557,4 @@ class leaderboards(minqlx.Plugin):
 
         leaderboard = table(headers, rows, "Average Accuracy (last 10 games)")
 
-        player.tell(leaderboard)
+        self.send_multiline_message(player, leaderboard)
