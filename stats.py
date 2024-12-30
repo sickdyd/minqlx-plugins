@@ -140,8 +140,6 @@ class stats(minqlx.Plugin):
             player_ql_stats_id = response[0]["player"]["player_id"]
             store_in_redis(self, _ql_stats_player_id.format(player.steam_id), player_ql_stats_id)
 
-            player_ql_stats_id = 42756
-
             url = f"https://qlstats.net/player/{player_ql_stats_id}/weaponstats.json?limit={WEAPON_STATS_LAST_GAMES}&game_type=ca"
             fetch(self, url, self.handle_get_ql_stats, player, channel)
         except KeyError:
@@ -154,7 +152,7 @@ class stats(minqlx.Plugin):
             return
 
         if not response["averages"]:
-            channel.reply(f"No stats available for {player.name}.")
+            channel.reply(f"No QLstats available for {player.name}.")
             return
 
         store_in_redis(self, _ql_stats_key.format(player.steam_id), response["averages"])

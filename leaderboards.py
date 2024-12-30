@@ -9,14 +9,22 @@ class leaderboards(minqlx.Plugin):
             "lb",
             self.cmd_leaderboard,
             priority=minqlx.PRI_HIGH,
-            usage="!lb <type>\nAvailable types: damage, kills, deaths, sniper, attack, winners, losers, accuracy, all"
+            usage="!lb <type>\nAvailable types: damage, kills, deaths, snipers, attackers, winners, losers, accuracy, all"
         )
+
+    def clean_chat(self, player):
+        player.tell(" ")
+        player.tell(" ")
+        player.tell(" ")
+        player.tell(" ")
+        player.tell(" ")
+        player.tell("Check the console to view the leaderboards.")
 
     @minqlx.thread
     def cmd_leaderboard(self, player, msg, channel):
         if len(msg) < 2:
-            channel.reply(
-                "Usage: !lb <type>\nAvailable types: damage, kills, deaths, sniper, attack, winners, losers, accuracy, all"
+            player.tell(
+                "Usage: !lb <type>\nAvailable types: damage, kills, deaths, snipers, attackers, winners, losers, accuracy, all"
             )
             return
 
@@ -24,7 +32,7 @@ class leaderboards(minqlx.Plugin):
 
         keys = self.db.keys("minqlx:players:*:local_stats")
         if not keys:
-            channel.reply("No local stats available.")
+            player.tell("No local stats available.")
             return
 
         all_local_stats = []
@@ -34,34 +42,44 @@ class leaderboards(minqlx.Plugin):
                 all_local_stats.extend(stats)
 
         if not all_local_stats:
-            channel.reply("No local stats available.")
+            player.tell("No local stats available.")
             return
 
         if leaderboard_type == "all":
-            channel.reply("Displaying all leaderboards:")
+            player.tell("Displaying all leaderboards:")
             self.run_all_leaderboards(all_local_stats, player, channel)
+            self.clean_chat(player)
             return
 
-        if leaderboard_type == "damage":
+
+        if leaderboard_type == "accuracy":
+            self.handle_accuracy_leaderboard(all_local_stats, player, channel)
+            self.clean_chat(player)
+        elif leaderboard_type == "damage":
             self.handle_damage_leaderboard(all_local_stats, player, channel)
+            self.clean_chat(player)
         elif leaderboard_type == "kills":
             self.handle_kills_leaderboard(all_local_stats, player, channel)
+            self.clean_chat(player)
         elif leaderboard_type == "deaths":
-            self.handle_losers_leaderboard(all_local_stats, player, channel)
-        elif leaderboard_type == "sniper":
-            self.handle_sniper_leaderboard(all_local_stats, player, channel)
-        elif leaderboard_type == "attack":
-            self.handle_attack_leaderboard(all_local_stats, player, channel)
+            self.handle_deaths_leaderboard(all_local_stats, player, channel)
+            self.clean_chat(player)
         elif leaderboard_type == "winners":
             self.handle_winners_leaderboard(all_local_stats, player, channel)
-        elif leaderboard_type == "accuracy":
-            self.handle_accuracy_leaderboard(all_local_stats, player, channel)
+            self.clean_chat(player)
+        elif leaderboard_type == "losers":
+            self.handle_losers_leaderboard(all_local_stats, player, channel)
+            self.clean_chat(player)
+        elif leaderboard_type == "snipers":
+            self.handle_snipers_leaderboard(all_local_stats, player, channel)
+            self.clean_chat(player)
+        elif leaderboard_type == "attackers":
+            self.handle_attackers_leaderboard(all_local_stats, player, channel)
+            self.clean_chat(player)
         else:
-            channel.reply(
-                f"Unknown leaderboard type: {leaderboard_type}. Available types: damage, kills, deaths, sniper, attack, winners, losers, accuracy, all."
+            player.tell(
+                f"Unknown leaderboard type: {leaderboard_type}. Available types: all, accuracy, damage, kills, deaths, winners, losers, snipers, attackers."
             )
-
-        channel.reply("\n" * 10)
 
     # Hooks
 
@@ -165,18 +183,20 @@ class leaderboards(minqlx.Plugin):
     def run_all_leaderboards(self, all_local_stats, player, channel):
         """Runs all leaderboards in separate threads to reduce server lag."""
         leaderboard_handlers = [
+            self.handle_accuracy_leaderboard,
             self.handle_damage_leaderboard,
             self.handle_kills_leaderboard,
-            self.handle_losers_leaderboard,
-            self.handle_sniper_leaderboard,
-            self.handle_attack_leaderboard,
+            self.handle_deaths_leaderboard,
             self.handle_winners_leaderboard,
-            self.handle_accuracy_leaderboard,
+            self.handle_losers_leaderboard,
+            self.handle_snipers_leaderboard,
+            self.handle_attackers_leaderboard,
         ]
 
         for handler in leaderboard_handlers:
             # Run each leaderboard in its own thread
             handler(all_local_stats, player, channel)
+            player.tell(" ")
             time.sleep(0.2)  # Add a short delay between leaderboards to reduce server strain
 
     @minqlx.thread
@@ -217,7 +237,7 @@ class leaderboards(minqlx.Plugin):
         player.tell(leaderboard)
 
     @minqlx.thread
-    def handle_sniper_leaderboard(self, stats_data, player, channel):
+    def handle_snipers_leaderboard(self, stats_data, player, channel):
         sniper_totals = {}
 
         for stat in stats_data:
@@ -265,7 +285,7 @@ class leaderboards(minqlx.Plugin):
         player.tell(leaderboard)
 
     @minqlx.thread
-    def handle_attack_leaderboard(self, stats_data, player, channel):
+    def handle_attackers_leaderboard(self, stats_data, player, channel):
         attack_totals = {}
 
         for stat in stats_data:
