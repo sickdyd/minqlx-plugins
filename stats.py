@@ -32,9 +32,9 @@ class stats(minqlx.Plugin):
             self.logger.exception(f"Error clearing game stats: {e}")
 
     def handle_stats(self, stats):
-        if stat["DATA"].get("WARMUP", False):
+        if stats["DATA"].get("WARMUP", False):
             return
-        if stat["DATA"].get("ABORTED", False):
+        if stats["DATA"].get("ABORTED", False):
             return
 
         if stats.get("TYPE") == "PLAYER_STATS":
