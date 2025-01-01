@@ -42,10 +42,18 @@ class stats(minqlx.Plugin):
             self.logger.info(f"Received player stats: {stats}")
             data = stats.get("DATA", {})
             steam_id = data.get("STEAM_ID")
-            if not steam_id:
-                return
 
-            self.append_game_stats(steam_id, stats)
+            if not steam_id or steam_id == "0":
+                player_name = data.get("NAME", "Unknown")
+
+                sanitized_name = re.sub(r"[^\w\d]", "_", player_name)
+                if not sanitized_name:
+                    sanitized_name = "UnknownPlayer"
+                key = f"bot:{sanitized_name}"
+            else:
+                key = f"player:{steam_id}"
+
+            self.append_game_stats(key, stats)
 
     def append_game_stats(self, steam_id, game_stats):
         try:

@@ -112,6 +112,8 @@ class leaderboards(minqlx.Plugin):
                 f"Unknown leaderboard type: {leaderboard_type}. Available types: all, accuracy, damage, kills, deaths, winners, losers, snipers, attackers."
             )
 
+        return
+
     # Hooks
 
     @minqlx.thread
