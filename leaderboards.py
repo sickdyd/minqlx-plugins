@@ -1,7 +1,8 @@
 import minqlx
 import time
+from zoneinfo import ZoneInfo
 from datetime import datetime, timedelta
-from .utils import get_json_from_redis, table
+from .utils import get_json_from_redis, table, strip_formatting
 
 class leaderboards(minqlx.Plugin):
     def __init__(self):
@@ -17,19 +18,21 @@ class leaderboards(minqlx.Plugin):
         for line in message.splitlines():
             player.tell(line)
 
-    def clean_chat(self, player, time_filter):
+    def clean_chat(self, player, time_filter, start_time, time_now):
+        start_time_str = start_time.strftime("%Y-%m-%d %H:%M:%S")
+
         player.tell(" ")
         player.tell(" ")
         player.tell(" ")
         player.tell(" ")
         player.tell(" ")
-        player.tell(f"Check the console to view the leaderboards for the {time_filter}.")
+        player.tell(f"Check the console to view the leaderboards for the {time_filter} (from {start_time_str} to now).")
 
     @minqlx.thread
     def cmd_leaderboard(self, player, msg, channel):
         if len(msg) < 2:
             player.tell(
-                "Usage: !lb <type> [time]\nAvailable types: damage, kills, deaths, snipers, attackers, winners, losers, accuracy, all\n"
+                "Usage: !lb <type> [time]\nAvailable types: damage, kills, deaths, snipers, attackers, winners, losers, accuracy, best, all\n"
                 "Available times: day (default), week, month."
             )
             return
@@ -37,17 +40,33 @@ class leaderboards(minqlx.Plugin):
         leaderboard_type = msg[1].lower()
         time_filter = msg[2].lower() if len(msg) > 2 else "day"
 
-        # Determine the time range for filtering
-        time_now = datetime.utcnow()
+        shanghai_tz = ZoneInfo("Asia/Shanghai")
+        time_now = datetime.now(shanghai_tz)
+
+        start_time, end_time = None, None
+
         if time_filter == "day":
-            start_time = time_now - timedelta(days=1)
+            # Midnight today in Shanghai time
+            start_time = time_now.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_time = start_time + timedelta(days=1)  # Next midnight
         elif time_filter == "week":
-            start_time = time_now - timedelta(weeks=1)
+            # Start from Monday of the current week in Shanghai time
+            start_of_week = time_now - timedelta(days=time_now.weekday())  # Monday
+            start_time = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_time = start_time + timedelta(days=7)  # End of the week
         elif time_filter == "month":
-            start_time = time_now - timedelta(days=30)
+            # Start from the first day of the current month in Shanghai time
+            start_time = time_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            # End of the month
+            if time_now.month == 12:  # December, next month is January
+                end_time = start_time.replace(year=time_now.year + 1, month=1)
+            else:
+                end_time = start_time.replace(month=time_now.month + 1)
         else:
             player.tell(f"Unknown time filter: {time_filter}. Valid options are 'day', 'week', or 'month'.")
             return
+
+        player.tell(f"{end_time}")
 
         keys_pattern = f"minqlx:players:*:local_stats:*"
         keys = self.db.keys(keys_pattern)
@@ -59,17 +78,18 @@ class leaderboards(minqlx.Plugin):
         for key in keys:
             stats = get_json_from_redis(self, key)
             if stats and "timestamp" in stats:
-                stat_time = datetime.fromisoformat(stats["timestamp"])
-                if stat_time >= start_time:
+                # Convert the timestamp to Shanghai time for comparison
+                stat_time = datetime.fromisoformat(stats["timestamp"]).replace(tzinfo=ZoneInfo("UTC")).astimezone(shanghai_tz)
+                if start_time <= stat_time < end_time:
                     all_local_stats.append(stats)
 
         if not all_local_stats:
-            player.tell(f"No local stats available for the selected period (1 {time_filter}).")
+            player.tell(f"No local stats available for the selected period ({time_filter}).")
             return
 
         if leaderboard_type == "all":
             self.run_all_leaderboards(all_local_stats, player, channel, time_filter)
-            self.clean_chat(player, time_filter)
+            self.clean_chat(player, time_filter, start_time, time_now)
             return
 
         leaderboard_mapping = {
@@ -86,7 +106,7 @@ class leaderboards(minqlx.Plugin):
 
         if leaderboard_type in leaderboard_mapping:
             leaderboard_mapping[leaderboard_type](all_local_stats, player, channel, time_filter)
-            self.clean_chat(player, time_filter)
+            self.clean_chat(player, time_filter, start_time, time_now)
         else:
             player.tell(
                 f"Unknown leaderboard type: {leaderboard_type}. Available types: all, accuracy, damage, kills, deaths, winners, losers, snipers, attackers."
@@ -122,14 +142,16 @@ class leaderboards(minqlx.Plugin):
 
     def top_combined_stats(self, stats_data, time_filter="day"):
         """Combines kills, damage, and average accuracy to determine the top players, filtered by time."""
-        # Determine the time range for filtering
-        time_now = datetime.utcnow()
+        shanghai_tz = ZoneInfo("Asia/Shanghai")
+        time_now = datetime.now(shanghai_tz)
+
         if time_filter == "day":
-            start_time = time_now - timedelta(days=1)
+            start_time = time_now.replace(hour=0, minute=0, second=0, microsecond=0)
         elif time_filter == "week":
-            start_time = time_now - timedelta(weeks=1)
+            start_time = time_now - timedelta(days=time_now.weekday())  # Start of the week (Monday)
+            start_time = start_time.replace(hour=0, minute=0, second=0, microsecond=0)
         elif time_filter == "month":
-            start_time = time_now - timedelta(days=30)
+            start_time = time_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)  # Start of the month
         else:
             raise ValueError(f"Invalid time filter: {time_filter}. Choose from 'day', 'week', or 'month'.")
 
@@ -149,6 +171,9 @@ class leaderboards(minqlx.Plugin):
         for stat in stats_data:
             if "DATA" in stat and "timestamp" in stat:
                 stat_time = datetime.fromisoformat(stat["timestamp"])
+                if stat_time.tzinfo is None:  # If stat_time is naive, make it timezone-aware
+                    stat_time = stat_time.replace(tzinfo=shanghai_tz)
+
                 if stat_time < start_time:
                     continue
 
@@ -195,7 +220,7 @@ class leaderboards(minqlx.Plugin):
 
             kills = stats["kills"]
             damage_given = stats["damage_given"]
-            combined_score = kills * 0.5 + (damage_given / 1000) * 0.3 + avg_accuracy * 1.5
+            combined_score = round(kills * 0.5 + (damage_given / 1000) * 0.3 + avg_accuracy * 0.9)
 
             final_scores.append((player_name, combined_score))
 

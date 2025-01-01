@@ -43,6 +43,10 @@ def get_json_from_redis(self, key):
         self.logger.exception(f"Error loading data from Redis: {e}")
     return None
 
+
+def strip_formatting(text):
+    return re.sub(r"\^\d", "", str(text))
+
 def table(headers, rows, title=None):
     """
     Given a list of headers and a list of rows, return a formatted table with a title, separators for each row, and a closing separator line.
@@ -51,9 +55,6 @@ def table(headers, rows, title=None):
         return "No data to display."
 
     MIN_COLUMN_WIDTH = 3
-
-    def strip_formatting(text):
-        return re.sub(r"\^\d", "", str(text))
 
     max_lengths = [max(len(header), MIN_COLUMN_WIDTH) for header in headers]
     for row in rows:
