@@ -1,5 +1,6 @@
 import minqlx
 import re
+from datetime import datetime
 from .utils import fetch, store_in_redis, get_from_redis, get_json_from_redis, table
 
 WEAPON_STATS_LAST_GAMES = 10
@@ -53,10 +54,13 @@ class stats(minqlx.Plugin):
                 self.logger.warning(f"No MATCH_GUID found in game stats for Steam ID {steam_id}.")
                 return
 
+            timestamp = datetime.utcnow().isoformat()
+            game_stats["timestamp"] = timestamp
+
             key = _local_stats_key.format(steam_id) + f":{game_id}"
             store_in_redis(self, key, game_stats)
 
-            self.logger.info(f"Stored game stats for Steam ID {steam_id}, Game ID {game_id}.")
+            self.logger.info(f"Stored game stats for Steam ID {steam_id}, Game ID {game_id}, Timestamp {timestamp}.")
         except Exception as e:
             self.logger.exception(f"Error appending game stats for {steam_id}: {e}")
 
