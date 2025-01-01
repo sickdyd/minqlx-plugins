@@ -1,6 +1,6 @@
 import minqlx
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from .utils import fetch, store_in_redis, get_from_redis, get_json_from_redis, table
 
 WEAPON_STATS_LAST_GAMES = 10
@@ -16,8 +16,8 @@ class stats(minqlx.Plugin):
     def __init__(self):
         self.add_hook("game_end", self.handle_game_end)
         self.add_hook("stats", self.handle_stats)
-        self.add_command("qlstats", self.cmd_ql_stats, priority=minqlx.PRI_HIGH, usage="Shows current player accuracy with datas from QLstats.net.")
-        self.add_command("stats", self.cmd_local_stats, priority=minqlx.PRI_HIGH, usage="Shows current player accuracy with local data.")
+        self.add_command("qlstats", self.cmd_ql_stats, priority=minqlx.PRI_HIGH, usage="!qlstats")
+        self.add_command("stats", self.cmd_local_stats, priority=minqlx.PRI_HIGH, usage="!stats day, !stats week, !stats month")
 
     # Hooks
 
@@ -67,6 +67,19 @@ class stats(minqlx.Plugin):
     # Commands
 
     def cmd_local_stats(self, player, msg, channel):
+        time_filter = msg[1].lower() if len(msg) > 1 else "day"
+        time_now = datetime.utcnow()
+
+        if time_filter == "day":
+            start_time = time_now - timedelta(days=1)
+        elif time_filter == "week":
+            start_time = time_now - timedelta(weeks=1)
+        elif time_filter == "month":
+            start_time = time_now - timedelta(days=30)
+        else:
+            channel.reply(f"Unknown time filter: {time_filter}. Valid options are 'day', 'week', or 'month'.")
+            return
+
         try:
             keys_pattern = f"minqlx:players:{player.steam_id}:local_stats:*"
             keys = self.db.keys(keys_pattern)
@@ -78,13 +91,15 @@ class stats(minqlx.Plugin):
             local_stats = []
             for key in keys:
                 stats = get_json_from_redis(self, key)
-                if stats:
-                    local_stats.append(stats)
+                if stats and "timestamp" in stats:
+                    stat_time = datetime.fromisoformat(stats["timestamp"])
+                    if stat_time >= start_time:
+                        local_stats.append(stats)
 
             if local_stats:
                 self.handle_local_stats(local_stats, player, channel)
             else:
-                channel.reply(f"No local stats available for {player.name}.")
+                channel.reply(f"No stats available for the selected period for {player.name}.")
         except Exception as e:
             self.logger.exception(f"Error retrieving local stats for {player.steam_id}: {e}")
             channel.reply(f"An error occurred while retrieving stats for {player.name}.")
