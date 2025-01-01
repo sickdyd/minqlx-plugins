@@ -109,14 +109,14 @@ class leaderboards(minqlx.Plugin):
         if not all_local_stats:
             return
 
-        top_players = self.top_combined_stats(all_local_stats, "day")
+        top_players = self.top_combined_stats(all_local_stats, "day")[:3]
 
         if top_players:
             top_names = "\n".join([
-                f"{index + 1}. {name[:10] + '…' if len(name) > 10 else name} (score: {round(score, 2)})"
+                f"{index + 1}. {name[:15] + '…' if len(name) > 10 else name}^7 (score: {round(score, 2)})"
                 for index, (name, score) in enumerate(top_players)
             ])
-            player.center_print(f"Today's ^3BEST players:^7\n{top_names}")
+            player.center_print(f"Today's ^3BEST^7 players:\n{top_names}")
 
     # Handlers
 
@@ -201,7 +201,7 @@ class leaderboards(minqlx.Plugin):
 
         sorted_totals = sorted(final_scores, key=lambda x: -x[1])
 
-        return sorted_totals[:3]
+        return sorted_totals[:10]
 
     @minqlx.thread
     def run_all_leaderboards(self, all_local_stats, player, channel, time_filter):
@@ -230,7 +230,7 @@ class leaderboards(minqlx.Plugin):
         if top_players:
             headers = ["#", "PLAYER", "SCORE"]
             rows = [
-                [str(index + 1), name[:10] + '…' if len(name) > 10 else name, f"{round(score, 2)}"]
+                [str(index + 1), name[:15] + '…' if len(strip_formatting(name)) > 10 else name, f"{round(score, 2)}"]
                 for index, (name, score) in enumerate(top_players)
             ]
 
@@ -308,7 +308,7 @@ class leaderboards(minqlx.Plugin):
 
         top_players = sorted_totals[:10]
 
-        headers = ["#", "PLAYER", "ACCURACY", "HEADSHOTS", "IMPRESSIVES", "TOTAL"]
+        headers = ["#", "PLAYER", "ACCURACY", "HEADSHOTS", "IMPRESSIVES", "TOT"]
         rows = []
 
         for index, (player_name, stats) in enumerate(top_players):
@@ -359,7 +359,7 @@ class leaderboards(minqlx.Plugin):
 
         top_players = sorted_totals[:10]
 
-        headers = ["#", "PLAYER", "EXCELLENT", "FIRSTFRAG", "MIDAIR", "REVENGE", "TOTAL"]
+        headers = ["#", "PLAYER", "EXCELLENT", "FIRSTFRAG", "MIDAIR", "REVENGE", "TOT"]
         rows = []
 
         for index, (player_name, stats) in enumerate(top_players):

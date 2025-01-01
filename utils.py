@@ -55,32 +55,27 @@ def table(headers, rows, title=None):
     def strip_formatting(text):
         return re.sub(r"\^\d", "", str(text))
 
-    # Calculate column widths
-    max_lengths = [max(len(strip_formatting(header)), MIN_COLUMN_WIDTH) for header in headers]
+    max_lengths = [max(len(header), MIN_COLUMN_WIDTH) for header in headers]
     for row in rows:
         for i, cell in enumerate(row):
             max_lengths[i] = max(max_lengths[i], len(strip_formatting(cell)))
 
-    # Format headers (align left)
     header_line = "| " + " | ".join(header.ljust(max_lengths[i]) for i, header in enumerate(headers)) + " |"
     separator_line = "+-" + "-+-".join("-" * length for length in max_lengths) + "-+"
 
-    # Format each row (align left for cells)
     row_lines = []
     for row in rows:
         formatted_row = "| " + " | ".join(
-            f"{cell}{' ' * (max_lengths[i] - len(strip_formatting(cell)))}"
+            f"{strip_formatting(cell)}{' ' * (max_lengths[i] - len(strip_formatting(cell)))}"
             for i, cell in enumerate(row)
         ) + " |"
         row_lines.append(formatted_row)
 
-    # Handle the title
     if title:
-        total_table_width = len(separator_line)  # Length of the separator line includes borders
-        centered_title = f"{title}".center(total_table_width - 2)  # Adjust for side borders
+        total_table_width = len(separator_line)
+        centered_title = f"{title}".center(total_table_width - 2)
         title_line = f"+{'-' * (total_table_width - 2)}+\n|{centered_title}|\n{separator_line}\n"
     else:
         title_line = ""
 
-    # Combine everything into the final table
     return title_line + "\n".join([header_line, separator_line] + row_lines + [separator_line])
