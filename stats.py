@@ -48,25 +48,42 @@ class stats(minqlx.Plugin):
 
     def append_game_stats(self, steam_id, game_stats):
         try:
-            stats_array = get_json_from_redis(self, _local_stats_key.format(steam_id)) or []
-            stats_array.append(game_stats)
+            game_id = game_stats.get("DATA", {}).get("MATCH_GUID")
+            if not game_id:
+                self.logger.warning(f"No MATCH_GUID found in game stats for Steam ID {steam_id}.")
+                return
 
-            if len(stats_array) > WEAPON_STATS_LAST_GAMES:
-                stats_array = stats_array[-WEAPON_STATS_LAST_GAMES:]
+            key = _local_stats_key.format(steam_id) + f":{game_id}"
+            store_in_redis(self, key, game_stats)
 
-            store_in_redis(self, _local_stats_key.format(steam_id), stats_array)
+            self.logger.info(f"Stored game stats for Steam ID {steam_id}, Game ID {game_id}.")
         except Exception as e:
             self.logger.exception(f"Error appending game stats for {steam_id}: {e}")
 
     # Commands
 
     def cmd_local_stats(self, player, msg, channel):
-        local_stats = get_json_from_redis(self, _local_stats_key.format(player.steam_id))
-        if local_stats:
-            self.handle_local_stats(local_stats, player, channel)
-            return
+        try:
+            keys_pattern = f"minqlx:players:{player.steam_id}:local_stats:*"
+            keys = self.db.keys(keys_pattern)
 
-        channel.reply(f"No local stats available for {player.name}.")
+            if not keys:
+                channel.reply(f"No local stats available for {player.name}.")
+                return
+
+            local_stats = []
+            for key in keys:
+                stats = get_json_from_redis(self, key)
+                if stats:
+                    local_stats.append(stats)
+
+            if local_stats:
+                self.handle_local_stats(local_stats, player, channel)
+            else:
+                channel.reply(f"No local stats available for {player.name}.")
+        except Exception as e:
+            self.logger.exception(f"Error retrieving local stats for {player.steam_id}: {e}")
+            channel.reply(f"An error occurred while retrieving stats for {player.name}.")
 
     def cmd_ql_stats(self, player, msg, channel):
         player_ql_stats_id = get_from_redis(self, _ql_stats_player_id.format(player.steam_id))

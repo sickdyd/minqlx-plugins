@@ -34,16 +34,14 @@ class leaderboards(minqlx.Plugin):
 
         leaderboard_type = msg[1].lower()
 
-        keys = self.db.keys("minqlx:players:*:local_stats")
+        keys_pattern = f"minqlx:players:*:local_stats:*"
+        keys = self.db.keys(keys_pattern)
         if not keys:
             player.tell("No local stats available.")
             return
 
-        all_local_stats = []
-        for key in keys:
-            stats = get_json_from_redis(self, key)
-            if stats:
-                all_local_stats.extend(stats)
+        all_local_stats = [get_json_from_redis(self, key) for key in keys]
+        all_local_stats = [stat for stat in all_local_stats if stat]
 
         if not all_local_stats:
             player.tell("No local stats available.")
@@ -55,30 +53,19 @@ class leaderboards(minqlx.Plugin):
             self.clean_chat(player)
             return
 
+        leaderboard_mapping = {
+            "accuracy": self.handle_accuracy_leaderboard,
+            "damage": self.handle_damage_leaderboard,
+            "kills": self.handle_kills_leaderboard,
+            "deaths": self.handle_deaths_leaderboard,
+            "winners": self.handle_winners_leaderboard,
+            "losers": self.handle_losers_leaderboard,
+            "snipers": self.handle_snipers_leaderboard,
+            "attackers": self.handle_attackers_leaderboard,
+        }
 
-        if leaderboard_type == "accuracy":
-            self.handle_accuracy_leaderboard(all_local_stats, player, channel)
-            self.clean_chat(player)
-        elif leaderboard_type == "damage":
-            self.handle_damage_leaderboard(all_local_stats, player, channel)
-            self.clean_chat(player)
-        elif leaderboard_type == "kills":
-            self.handle_kills_leaderboard(all_local_stats, player, channel)
-            self.clean_chat(player)
-        elif leaderboard_type == "deaths":
-            self.handle_deaths_leaderboard(all_local_stats, player, channel)
-            self.clean_chat(player)
-        elif leaderboard_type == "winners":
-            self.handle_winners_leaderboard(all_local_stats, player, channel)
-            self.clean_chat(player)
-        elif leaderboard_type == "losers":
-            self.handle_losers_leaderboard(all_local_stats, player, channel)
-            self.clean_chat(player)
-        elif leaderboard_type == "snipers":
-            self.handle_snipers_leaderboard(all_local_stats, player, channel)
-            self.clean_chat(player)
-        elif leaderboard_type == "attackers":
-            self.handle_attackers_leaderboard(all_local_stats, player, channel)
+        if leaderboard_type in leaderboard_mapping:
+            leaderboard_mapping[leaderboard_type](all_local_stats, player, channel)
             self.clean_chat(player)
         else:
             player.tell(
@@ -91,15 +78,13 @@ class leaderboards(minqlx.Plugin):
     def handle_team_switch(self, player, old_team, new_team):
         time.sleep(5)
 
-        keys = self.db.keys("minqlx:players:*:local_stats")
+        keys_pattern = f"minqlx:players:*:local_stats:*"
+        keys = self.db.keys(keys_pattern)
         if not keys:
             return
 
-        all_local_stats = []
-        for key in keys:
-            stats = get_json_from_redis(self, key)
-            if stats:
-                all_local_stats.extend(stats)
+        all_local_stats = [get_json_from_redis(self, key) for key in keys]
+        all_local_stats = [stat for stat in all_local_stats if stat]
 
         if not all_local_stats:
             return
