@@ -112,11 +112,13 @@ class leaderboards(minqlx.Plugin):
                 f"Unknown leaderboard type: {leaderboard_type}. Available types: all, accuracy, damage, kills, deaths, winners, losers, snipers, attackers."
             )
 
+        return
+
     # Hooks
 
     @minqlx.thread
     def handle_team_switch(self, player, old_team, new_team):
-        time.sleep(5)
+        time.sleep(4)
 
         keys_pattern = f"minqlx:players:*:local_stats:*"
         keys = self.db.keys(keys_pattern)
@@ -136,7 +138,7 @@ class leaderboards(minqlx.Plugin):
                 f"{index + 1}. {name[:15] + '…' if len(name) > 10 else name}^7 (score: {round(score, 2)})"
                 for index, (name, score) in enumerate(top_players)
             ])
-            player.center_print(f"Today's ^3BEST^7 players:\n{top_names}")
+            player.center_print(f"\n\nToday's ^3BEST^7 players:\n\n{top_names}")
 
     # Handlers
 
@@ -145,13 +147,24 @@ class leaderboards(minqlx.Plugin):
         shanghai_tz = ZoneInfo("Asia/Shanghai")
         time_now = datetime.now(shanghai_tz)
 
+        start_time, end_time = None, None
+
         if time_filter == "day":
             start_time = time_now.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_time = start_time + timedelta(days=1)  # Next midnight
         elif time_filter == "week":
-            start_time = time_now - timedelta(days=time_now.weekday())  # Start of the week (Monday)
-            start_time = start_time.replace(hour=0, minute=0, second=0, microsecond=0)
+            # Start from Monday of the current week
+            start_of_week = time_now - timedelta(days=time_now.weekday())  # Monday
+            start_time = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_time = start_time + timedelta(days=7)  # End of the week
         elif time_filter == "month":
-            start_time = time_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)  # Start of the month
+            # Start from the first day of the current month
+            start_time = time_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            # End of the month
+            if time_now.month == 12:  # December, next month is January
+                end_time = start_time.replace(year=time_now.year + 1, month=1)
+            else:
+                end_time = start_time.replace(month=time_now.month + 1)
         else:
             raise ValueError(f"Invalid time filter: {time_filter}. Choose from 'day', 'week', or 'month'.")
 
@@ -170,11 +183,10 @@ class leaderboards(minqlx.Plugin):
 
         for stat in stats_data:
             if "DATA" in stat and "timestamp" in stat:
-                stat_time = datetime.fromisoformat(stat["timestamp"])
-                if stat_time.tzinfo is None:  # If stat_time is naive, make it timezone-aware
-                    stat_time = stat_time.replace(tzinfo=shanghai_tz)
+                stat_time = datetime.fromisoformat(stat["timestamp"]).replace(tzinfo=ZoneInfo("UTC")).astimezone(shanghai_tz)
 
-                if stat_time < start_time:
+                # Filter stats within the defined time range
+                if not (start_time <= stat_time < end_time):
                     continue
 
                 player_name = stat["DATA"].get("NAME", "Unknown")
@@ -259,9 +271,10 @@ class leaderboards(minqlx.Plugin):
                 for index, (name, score) in enumerate(top_players)
             ]
 
-            leaderboard_table = table(headers, rows, f"Best Players (1 {time_filter})")
+            leaderboard_table = table(headers, rows, f"Best Players ({self.friendly_time_filter(time_filter)})")
 
             self.send_multiline_message(player, leaderboard_table)
+            player.tell("The forumla to calculate the best players is (kills * 0.5) + (damage / 1000 * 0.3) + (avg accuracy * 0.9).")
         else:
             self.send_multiline_message(player, f"No stats available for the {time_filter}.")
 
@@ -298,7 +311,7 @@ class leaderboards(minqlx.Plugin):
                 str(totals["DAMAGE TAKEN"])
             ])
 
-        leaderboard = table(headers, rows, f"Damage Dealt (1 {time_filter})")
+        leaderboard = table(headers, rows, f"Damage Dealt ({self.friendly_time_filter(time_filter)})")
 
         self.send_multiline_message(player, leaderboard)
 
@@ -346,7 +359,7 @@ class leaderboards(minqlx.Plugin):
                 str(stats["TOTAL"]),
             ])
 
-        leaderboard = table(headers, rows, f"Sniper Medals (1 {time_filter})")
+        leaderboard = table(headers, rows, f"Sniper Medals ({self.friendly_time_filter(time_filter)})")
 
         self.send_multiline_message(player, leaderboard)
 
@@ -398,7 +411,7 @@ class leaderboards(minqlx.Plugin):
                 str(stats["TOTAL"]),
             ])
 
-        leaderboard = table(headers, rows, f"Attack Medals (1 {time_filter})")
+        leaderboard = table(headers, rows, f"Attack Medals ({self.friendly_time_filter(time_filter)})")
 
         self.send_multiline_message(player, leaderboard)
 
@@ -443,7 +456,7 @@ class leaderboards(minqlx.Plugin):
                 str(stats["K/D RATIO"])
             ])
 
-        leaderboard = table(headers, rows, f"Kills (1 {time_filter})")
+        leaderboard = table(headers, rows, f"Kills ({self.friendly_time_filter(time_filter)})")
 
         self.send_multiline_message(player, leaderboard)
 
@@ -478,7 +491,7 @@ class leaderboards(minqlx.Plugin):
                 str(stats["DEATHS"]),
             ])
 
-        leaderboard = table(headers, rows, f"Deaths (1 {time_filter})")
+        leaderboard = table(headers, rows, f"Deaths ({self.friendly_time_filter(time_filter)})")
 
         self.send_multiline_message(player, leaderboard)
 
@@ -510,7 +523,7 @@ class leaderboards(minqlx.Plugin):
             for index, (player_name, stats) in enumerate(top_players)
         ]
 
-        leaderboard = table(headers, rows, f"Wins (1 {time_filter})")
+        leaderboard = table(headers, rows, f"Wins ({self.friendly_time_filter(time_filter)})")
 
         self.send_multiline_message(player, leaderboard)
 
@@ -542,7 +555,7 @@ class leaderboards(minqlx.Plugin):
             for index, (player_name, stats) in enumerate(top_players)
         ]
 
-        leaderboard = table(headers, rows, f"Losses (1 {time_filter})")
+        leaderboard = table(headers, rows, f"Losses ({self.friendly_time_filter(time_filter)})")
 
         self.send_multiline_message(player, leaderboard)
 
@@ -617,6 +630,13 @@ class leaderboards(minqlx.Plugin):
                 str(player_stats["total_avg_accuracy"]),
             ] + [str(player_stats["weapons"][abbr]) for abbr in relevant_weapons.values()])
 
-        leaderboard = table(headers, rows, f"Average Accuracy (1 {time_filter})")
+        leaderboard = table(headers, rows, f"Average Accuracy ({self.friendly_time_filter(time_filter)})")
 
         self.send_multiline_message(player, leaderboard)
+
+    def friendly_time_filter(self, time_filter):
+        return {
+            "day": "today",
+            "week": "this week",
+            "month": "this month"
+        }.get(time_filter, time_filter)

@@ -1,6 +1,7 @@
 import minqlx
 import re
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from .utils import fetch, store_in_redis, get_from_redis, get_json_from_redis, table
 
 WEAPON_STATS_LAST_GAMES = 10
@@ -42,10 +43,18 @@ class stats(minqlx.Plugin):
             self.logger.info(f"Received player stats: {stats}")
             data = stats.get("DATA", {})
             steam_id = data.get("STEAM_ID")
-            if not steam_id:
-                return
 
-            self.append_game_stats(steam_id, stats)
+            if not steam_id or steam_id == "0":
+                player_name = data.get("NAME", "Unknown")
+
+                sanitized_name = re.sub(r"[^\w\d]", "_", player_name)
+                if not sanitized_name:
+                    sanitized_name = "UnknownPlayer"
+                key = sanitized_name
+            else:
+                key = steam_id
+
+            self.append_game_stats(key, stats)
 
     def append_game_stats(self, steam_id, game_stats):
         try:
@@ -68,14 +77,28 @@ class stats(minqlx.Plugin):
 
     def cmd_local_stats(self, player, msg, channel):
         time_filter = msg[1].lower() if len(msg) > 1 else "day"
-        time_now = datetime.utcnow()
+        shanghai_tz = ZoneInfo("Asia/Shanghai")
+        time_now = datetime.now(shanghai_tz)
+
+        start_time, end_time = None, None
 
         if time_filter == "day":
-            start_time = time_now - timedelta(days=1)
+            # Midnight today in Shanghai time
+            start_time = time_now.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_time = start_time + timedelta(days=1)  # Next midnight
         elif time_filter == "week":
-            start_time = time_now - timedelta(weeks=1)
+            # Start from Monday of the current week in Shanghai time
+            start_of_week = time_now - timedelta(days=time_now.weekday())  # Monday
+            start_time = start_of_week.replace(hour=0, minute=0, second=0, microsecond=0)
+            end_time = start_time + timedelta(days=7)  # End of the week
         elif time_filter == "month":
-            start_time = time_now - timedelta(days=30)
+            # Start from the first day of the current month in Shanghai time
+            start_time = time_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            # End of the month
+            if time_now.month == 12:  # December, next month is January
+                end_time = start_time.replace(year=time_now.year + 1, month=1)
+            else:
+                end_time = start_time.replace(month=time_now.month + 1)
         else:
             channel.reply(f"Unknown time filter: {time_filter}. Valid options are 'day', 'week', or 'month'.")
             return
@@ -92,14 +115,15 @@ class stats(minqlx.Plugin):
             for key in keys:
                 stats = get_json_from_redis(self, key)
                 if stats and "timestamp" in stats:
-                    stat_time = datetime.fromisoformat(stats["timestamp"])
-                    if stat_time >= start_time:
+                    # Convert the timestamp to Shanghai timezone for comparison
+                    stat_time = datetime.fromisoformat(stats["timestamp"]).replace(tzinfo=ZoneInfo("UTC")).astimezone(shanghai_tz)
+                    if start_time <= stat_time < end_time:
                         local_stats.append(stats)
 
             if local_stats:
                 self.handle_local_stats(local_stats, player, channel)
             else:
-                channel.reply(f"No stats available for the selected period for {player.name}.")
+                channel.reply(f"No stats available for the selected period ({time_filter}) for {player.name}.")
         except Exception as e:
             self.logger.exception(f"Error retrieving local stats for {player.steam_id}: {e}")
             channel.reply(f"An error occurred while retrieving stats for {player.name}.")
