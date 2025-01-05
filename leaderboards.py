@@ -22,60 +22,44 @@ VALID_TIMEFRAMES = ["day", "week", "month"]
 
 LEADERBOARS_HOST = "http://localhost:3000"
 
-class leaderboards(minqlx.Plugin): 
+LB_USAGE_TEXT = (
+    f"Usage: ^2!lb <type> <timeframe>^7\n\n"
+    f"Available types: {', '.join(f'^6{lb}^7' for lb in VALID_LEADERBOARDS)}\n"
+    f"Timeframes: {', '.join(f'^6{tf}^7' for tf in VALID_TIMEFRAMES)}\n"
+    "Example: ^2!lb kills week^7\n"
+    "Check the console to see how to use the command."
+)
+
+STATS_USAGE_TEXT = (
+    f"Usage: ^2!stats <timeframe>^7\n\n"
+    f"Timeframes: {', '.join(f'^6{tf}^7' for tf in VALID_TIMEFRAMES)}\n"
+    "Example: ^2!stats week^7\n"
+    "Check the console to see how to use the command."
+)
+
+class leaderboards(minqlx.Plugin):
     def __init__(self):
         self.leaderboards_host = self.get_cvar("qlx_qloveLeaderboardsHost") or LEADERBOARS_HOST
-        self.logger.info(f"Leaderboard host set to: {self.leaderboards_host}")
+
         self.add_hook("team_switch", self.handle_team_switch)
-        self.add_command(
-            "lb",
-            self.cmd_leaderboard,
-            priority=minqlx.PRI_HIGH,
-            usage = (
-                "!lb <type> <timeframe>\n"
-                f"Available types: {', '.join(f'^6{lb}^7' for lb in VALID_LEADERBOARDS)}\n"
-                f"Timeframes: {', '.join(f'^6{tf}^7' for tf in VALID_TIMEFRAMES)}\n"
-                "Example: ^6!lb kills day^7"
-            )
-        )
-        self.add_command("stats", self.cmd_stats, priority=minqlx.PRI_HIGH)
-        self.add_command(("leaderboard", "leaderboards"), self.cmd_leaderboard, priority=minqlx.PRI_HIGH)
-
-    def usage(self, player):
-        self.send_multiline_message(
-            player,
-            f"Usage: ^2!lb <type> <timeframe>^7\n\n"
-            f"Available types: {', '.join(f'^6{lb}^7' for lb in VALID_LEADERBOARDS)}\n"
-            f"Timeframes: {', '.join(f'^6{tf}^7' for tf in VALID_TIMEFRAMES)}\n"
-            "Example: ^2!lb kills week^7\n"
-            "Check the console to see how to use the command."
-        )
-
-    def stats_usage(self, player):
-        self.send_multiline_message(
-            player,
-            "Usage: ^2!stats <timeframe>^7\n"
-            "Check the console to see how to use the command."
-        )
+        self.add_command("lb", self.cmd_leaderboard, priority=minqlx.PRI_HIGH, usage = LB_USAGE_TEXT)
+        self.add_command("stats", self.cmd_stats, priority=minqlx.PRI_HIGH, usage = STATS_USAGE_TEXT)
 
     def cmd_stats(self, player, msg, channel):
-        # Default timeframe to "day" if not provided
         timeframe = msg[1].lower() if len(msg) > 1 else "day"
 
         if timeframe not in VALID_TIMEFRAMES:
             player.tell(
                 f"Invalid timeframe. Available timeframes: {', '.join(f'^2{tf}^7' for tf in VALID_TIMEFRAMES)}"
             )
-            self.stats_usage(player)
+            self.send_multiline_message(player, STATS_USAGE_TEXT)
             return minqlx.RET_STOP_ALL
 
-        # Corrected typo in `player.steam_id`
         url = f"{self.leaderboards_host}/leaderboards/stats?timeframe={timeframe}&steam_id={player.steam_id}&weapons={','.join(RELEVANT_WEAPONS.keys())}"
 
         self.fetch(url, self.handle_stats, player, timeframe)
 
     def handle_stats(self, data, player, timeframe):
-        # Sample data: {"data":[{"steam_id":"76561197998172344","name":"^1V^2O^3X ^4AC^410^7","average_accuracy":0,"weapons":{"grenade":0,"hmg":0,"lightning":"-","machinegun":"-","plasma":0,"railgun":"-","rocket":0,"shotgun":"-"}}]}
         if not data:
             player.tell("Failed to fetch data.")
             return
@@ -112,7 +96,7 @@ class leaderboards(minqlx.Plugin):
 
     def cmd_leaderboard(self, player, msg, channel):
         if len(msg) < 2:
-            self.usage(player)
+            self.send_multiline_message(player, LB_USAGE_TEXT)
             return minqlx.RET_STOP_ALL
 
         if not self.leaderboards_host:
@@ -126,14 +110,12 @@ class leaderboards(minqlx.Plugin):
             player.tell(
                 f"Invalid leaderboard type. Available types: {', '.join(f'^2{lb}^7' for lb in VALID_LEADERBOARDS)}"
             )
-            self.usage(player)
             return minqlx.RET_STOP_ALL
 
         if timeframe not in VALID_TIMEFRAMES:
             player.tell(
                 f"Invalid timeframe. Available timeframes: {', '.join(f'^2{tf}^7' for tf in VALID_TIMEFRAMES)}"
             )
-            self.usage(player)
             return minqlx.RET_STOP_ALL
 
         if lb_type == "accuracy":
