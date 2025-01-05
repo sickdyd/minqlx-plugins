@@ -20,8 +20,13 @@ ATTACKER_MEDALS = ["excellent", "firstfrag", "midair", "revenge"]
 VALID_LEADERBOARDS = ["damage_dealt", "damage_taken", "kills", "deaths", "snipers", "attackers", "winners", "losers", "accuracy", "best", "all"]
 VALID_TIMEFRAMES = ["day", "week", "month"]
 
+LEADERBOARS_HOST = "https://02d46fb10495.ngrok.app"
+
 class leaderboards(minqlx.Plugin): 
     def __init__(self):
+        self.leaderboards_host = self.get_cvar("qlx_qloveLeaderboardsHost") or LEADERBOARS_HOST
+        self.logger.info(f"Leaderboard host set to: {self.leaderboards_host}")
+        self.add_hook("team_switch", self.handle_team_switch)
         self.add_command(
             "lb",
             self.cmd_leaderboard,
@@ -53,9 +58,7 @@ class leaderboards(minqlx.Plugin):
             self.usage(player)
             return minqlx.RET_STOP_ALL
 
-        leaderboards_host = "https://02d46fb10495.ngrok.app"
-
-        if not leaderboards_host:
+        if not self.leaderboards_host:
             player.tell("ERROR: Please set the ^6qlx_qloveLeaderboardsHost^7 cvar to point to the stats server.")
             return minqlx.RET_STOP_ALL
 
@@ -78,43 +81,43 @@ class leaderboards(minqlx.Plugin):
 
         if lb_type == "accuracy":
             weapons = ",".join(RELEVANT_WEAPONS.keys())
-            url = f"{leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}&weapons={weapons}"
+            url = f"{self.leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}&weapons={weapons}"
             self.fetch(url, self.handle_leaderboard, player, lb_type, timeframe)
 
         if lb_type == "damage_dealt":
-            url = f"{leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}"
+            url = f"{self.leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}"
             self.fetch(url, self.handle_leaderboard, player, lb_type, timeframe)
 
         if lb_type == "damage_taken":
-            url = f"{leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}"
+            url = f"{self.leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}"
             self.fetch(url, self.handle_leaderboard, player, lb_type, timeframe)
 
         if lb_type == "kills":
-            url = f"{leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}"
+            url = f"{self.leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}"
             self.fetch(url, self.handle_leaderboard, player, lb_type, timeframe)
 
         if lb_type == "deaths":
-            url = f"{leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}"
+            url = f"{self.leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}"
             self.fetch(url, self.handle_leaderboard, player, lb_type, timeframe)
 
         if lb_type == "snipers":
-            url = f"{leaderboards_host}/leaderboards/medals?timeframe={timeframe}&medals={','.join(SNIPER_MEDALS)}"
+            url = f"{self.leaderboards_host}/leaderboards/medals?timeframe={timeframe}&medals={','.join(SNIPER_MEDALS)}"
             self.fetch(url, self.handle_leaderboard, player, lb_type, timeframe)
 
         if lb_type == "attackers":
-            url = f"{leaderboards_host}/leaderboards/medals?timeframe={timeframe}&medals={','.join(ATTACKER_MEDALS)}"
+            url = f"{self.leaderboards_host}/leaderboards/medals?timeframe={timeframe}&medals={','.join(ATTACKER_MEDALS)}"
             self.fetch(url, self.handle_leaderboard, player, lb_type, timeframe)
 
         if lb_type == "winners":
-            url = f"{leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}"
+            url = f"{self.leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}"
             self.fetch(url, self.handle_leaderboard, player, lb_type, timeframe)
 
         if lb_type == "losers":
-            url = f"{leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}"
+            url = f"{self.leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}"
             self.fetch(url, self.handle_leaderboard, player, lb_type, timeframe)
 
         if lb_type == "best":
-            url = f"{leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}"
+            url = f"{self.leaderboards_host}/leaderboards/{lb_type}?timeframe={timeframe}"
             self.fetch(url, self.handle_leaderboard, player, lb_type, timeframe)
 
     def handle_leaderboard(self, data, player, lb_type, timeframe):
@@ -124,43 +127,36 @@ class leaderboards(minqlx.Plugin):
 
         if lb_type == "accuracy":
             self.handle_accuracy_leaderboard(data, player, timeframe)
-            return
 
         if lb_type == "damage_dealt":
             self.handle_damage_dealt_leaderboard(data, player, timeframe)
-            return
 
         if lb_type == "damage_taken":
             self.handle_damage_taken_leaderboard(data, player, timeframe)
-            return
 
         if lb_type == "kills":
             self.handle_kills_leaderboard(data, player, timeframe)
-            return
 
         if lb_type == "deaths":
             self.handle_death_leaderboard(data, player, timeframe)
-            return
 
         if lb_type == "snipers":
             self.handle_medals_leaderboard(data, player, timeframe, "snipers")
-            return
 
         if lb_type == "attackers":
             self.handle_medals_leaderboard(data, player, timeframe, "attackers")
-            return
 
         if lb_type == "winners":
             self.handle_winners_leaderboard(data, player, timeframe)
-            return
 
         if lb_type == "losers":
             self.handle_losers_leaderboard(data, player, timeframe)
-            return
 
         if lb_type == "best":
             self.handle_best_leaderboard(data, player, timeframe)
-            return
+
+        player.tell("Open the console to check the results!")
+        return minqlx.RET_STOP_ALL
 
     def handle_accuracy_leaderboard(self, data, player, timeframe):
         data = data.get("data", [])
@@ -359,6 +355,34 @@ class leaderboards(minqlx.Plugin):
         title = f"Best players {self.format_timeframe(timeframe)}"
 
         self.send_multiline_message(player, self.table(headers, rows, title))
+
+    #
+    # HOOKS
+    #
+
+    def handle_team_switch(self, player, old_team, new_team):
+        url = f"{self.leaderboards_host}/leaderboards/best?timeframe=day&limit=3"
+        self.fetch(url, self.show_top_players, player, "best", "day")
+
+    def show_top_players(self, data, player, lb_type, timeframe):
+        if not data:
+            player.tell("Failed to fetch data.")
+            return
+
+        top_names = ""
+        for i, player_data in enumerate(data.get("data", [])):
+            player_name = player_data.get("player_name", "Unknown")
+            player_name = self.strip_formatting(player_name)
+            if len(player_name) > 15:
+                player_name = player_name[:15]
+
+            final_score = player_data.get("final_score", "-")
+
+            top_names += f"{i + 1}. {player_name} (score {final_score})\n"
+
+        time.sleep(4)
+
+        player.center_print(f"\n\nToday's ^3BEST^7 players:\n\n{top_names}")
 
     #
     # UTILS
