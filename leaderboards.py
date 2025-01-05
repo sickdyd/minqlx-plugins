@@ -20,7 +20,7 @@ ATTACKER_MEDALS = ["excellent", "firstfrag", "midair", "revenge"]
 VALID_LEADERBOARDS = ["damage_dealt", "damage_taken", "kills", "deaths", "snipers", "attackers", "winners", "losers", "accuracy", "best", "all"]
 VALID_TIMEFRAMES = ["day", "week", "month"]
 
-LEADERBOARS_HOST = "https://02d46fb10495.ngrok.app"
+LEADERBOARS_HOST = "http://localhost:3000"
 
 class leaderboards(minqlx.Plugin): 
     def __init__(self):
@@ -38,10 +38,8 @@ class leaderboards(minqlx.Plugin):
                 "Example: ^6!lb kills day^7"
             )
         )
+        self.add_command("stats", self.cmd_stats, priority=minqlx.PRI_HIGH)
         self.add_command(("leaderboard", "leaderboards"), self.cmd_leaderboard, priority=minqlx.PRI_HIGH)
-
-    def cmd_leaderboard(self, player, msg, channel):
-        self.usage(player)
 
     def usage(self, player):
         self.send_multiline_message(
@@ -52,6 +50,65 @@ class leaderboards(minqlx.Plugin):
             "Example: ^2!lb kills week^7\n"
             "Check the console to see how to use the command."
         )
+
+    def stats_usage(self, player):
+        self.send_multiline_message(
+            player,
+            "Usage: ^2!stats <timeframe>^7\n"
+            "Check the console to see how to use the command."
+        )
+
+    def cmd_stats(self, player, msg, channel):
+        # Default timeframe to "day" if not provided
+        timeframe = msg[1].lower() if len(msg) > 1 else "day"
+
+        if timeframe not in VALID_TIMEFRAMES:
+            player.tell(
+                f"Invalid timeframe. Available timeframes: {', '.join(f'^2{tf}^7' for tf in VALID_TIMEFRAMES)}"
+            )
+            self.stats_usage(player)
+            return minqlx.RET_STOP_ALL
+
+        # Corrected typo in `player.steam_id`
+        url = f"{self.leaderboards_host}/leaderboards/stats?timeframe={timeframe}&steam_id={player.steam_id}&weapons={','.join(RELEVANT_WEAPONS.keys())}"
+
+        self.fetch(url, self.handle_stats, player, timeframe)
+
+    def handle_stats(self, data, player, timeframe):
+        # Sample data: {"data":[{"steam_id":"76561197998172344","name":"^1V^2O^3X ^4AC^410^7","average_accuracy":0,"weapons":{"grenade":0,"hmg":0,"lightning":"-","machinegun":"-","plasma":0,"railgun":"-","rocket":0,"shotgun":"-"}}]}
+        if not data:
+            player.tell("Failed to fetch data.")
+            return
+
+        player_data = data["data"][0]
+        average_accuracy = player_data.get("average_accuracy", 0)
+        weapons = player_data.get("weapons", {})
+
+        def colorize_accuracy(value):
+            if value == "-":
+                return "-"
+
+            try:
+                value = int(value)
+            except ValueError:
+                return "-"
+
+            if value < 30:
+                return f"^1{value}%^7"
+            elif value < 40:
+                return f"^3{value}%^7"
+            else:
+                return f"^2{value}%^7"
+
+        weapon_stats = [
+            f"{RELEVANT_WEAPONS[weapon].upper()}: {colorize_accuracy(accuracy)}"
+            for weapon, accuracy in weapons.items()
+            if weapon in RELEVANT_WEAPONS
+        ]
+
+        weapon_stats.append(f"AVG: {colorize_accuracy(average_accuracy)}")
+        stats_line = ", ".join(weapon_stats)
+        player.tell(stats_line)
 
     def cmd_leaderboard(self, player, msg, channel):
         if len(msg) < 2:
