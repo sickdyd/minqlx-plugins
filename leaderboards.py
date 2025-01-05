@@ -30,12 +30,6 @@ LB_USAGE_TEXT = (
     "Check the console to see how to use the command."
 )
 
-STATS_USAGE_TEXT = (
-    f"Usage: ^2!stats <timeframe>^7\n\n"
-    f"Timeframes: {', '.join(f'^6{tf}^7' for tf in VALID_TIMEFRAMES)}\n"
-    "Example: ^2!stats week^7\n"
-    "Check the console to see how to use the command."
-)
 
 class leaderboards(minqlx.Plugin):
     def __init__(self):
@@ -43,56 +37,6 @@ class leaderboards(minqlx.Plugin):
 
         self.add_hook("team_switch", self.handle_team_switch)
         self.add_command("lb", self.cmd_leaderboard, priority=minqlx.PRI_HIGH, usage = LB_USAGE_TEXT)
-        self.add_command("stats", self.cmd_stats, priority=minqlx.PRI_HIGH, usage = STATS_USAGE_TEXT)
-
-    def cmd_stats(self, player, msg, channel):
-        timeframe = msg[1].lower() if len(msg) > 1 else "day"
-
-        if timeframe not in VALID_TIMEFRAMES:
-            player.tell(
-                f"Invalid timeframe. Available timeframes: {', '.join(f'^2{tf}^7' for tf in VALID_TIMEFRAMES)}"
-            )
-            self.send_multiline_message(player, STATS_USAGE_TEXT)
-            return minqlx.RET_STOP_ALL
-
-        url = f"{self.leaderboards_host}/leaderboards/stats?timeframe={timeframe}&steam_id={player.steam_id}&weapons={','.join(RELEVANT_WEAPONS.keys())}"
-
-        self.fetch(url, self.handle_stats, player, timeframe)
-
-    def handle_stats(self, data, player, timeframe):
-        if not data:
-            player.tell("Failed to fetch data.")
-            return
-
-        player_data = data["data"][0]
-        average_accuracy = player_data.get("average_accuracy", 0)
-        weapons = player_data.get("weapons", {})
-
-        def colorize_accuracy(value):
-            if value == "-":
-                return "-"
-
-            try:
-                value = int(value)
-            except ValueError:
-                return "-"
-
-            if value < 30:
-                return f"^1{value}%^7"
-            elif value < 40:
-                return f"^3{value}%^7"
-            else:
-                return f"^2{value}%^7"
-
-        weapon_stats = [
-            f"{RELEVANT_WEAPONS[weapon].upper()}: {colorize_accuracy(accuracy)}"
-            for weapon, accuracy in weapons.items()
-            if weapon in RELEVANT_WEAPONS
-        ]
-
-        weapon_stats.append(f"AVG: {colorize_accuracy(average_accuracy)}")
-        stats_line = ", ".join(weapon_stats)
-        player.tell(stats_line)
 
     def cmd_leaderboard(self, player, msg, channel):
         if len(msg) < 2:
