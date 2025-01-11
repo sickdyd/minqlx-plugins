@@ -113,6 +113,10 @@ class stats(minqlx.Plugin):
             player.tell("Failed to fetch data.")
             return
 
+        if data["data"] == []:
+            player.tell(f"No stats available for {player.name} ({timeframe}).")
+            return
+
         player_data = data["data"][0]
         average_accuracy = player_data.get("average_accuracy", 0)
         weapons = player_data.get("weapons", {})
