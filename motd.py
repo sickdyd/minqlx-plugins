@@ -42,9 +42,13 @@ class motd(minqlx.Plugin):
         # Add this server to the MOTD set.
         self.db.sadd(MOTD_SET_KEY, self.home)
 
+        initial_motd = self.get_cvar("qlx_motd")
+        if initial_motd:
+            self.db[self.motd_key] = initial_motd
+
         # Cvar to disable/change the welcome sound.
         self.set_cvar_once("qlx_motdSound", "sound/vo/crash_new/37b_07_alt.wav")
-        self.set_cvar_once("qlx_motdHeader", "^6======= ^7Message of the Day ^6=======^7")
+        self.set_cvar_once("qlx_motdHeader", "^6======= ^7Check out the leaderboards! ^6=======^7")
 
     @minqlx.delay(2)
     def handle_player_loaded(self, player):

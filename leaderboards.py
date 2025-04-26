@@ -2,7 +2,6 @@ import minqlx
 import time
 import re
 import requests
-from datetime import datetime, timedelta
 
 RELEVANT_WEAPONS = ["lightning", "grenade", "rocket", "railgun", "plasma", "machinegun", "hmg", "shotgun"]
 SNIPER_MEDALS = ["accuracy", "headshot", "impressive",]
@@ -12,7 +11,7 @@ AVAILABLE_TIME_FILTERS = ["day", "week", "month", "year", "all_time"]
 DEFAULT_LIMIT = 10
 DEFAULT_TIME_FILTER = "day"
 LEADERBOARS_HOST = "http://qlove_api:3000/api/v1"
-HIGHLITHED_LIST_ENTRIES_SEPARATOR = "^7, ^6"
+HIGHLITHED_LIST_ENTRIES_SEPARATOR = "^7, ^2"
 
 class leaderboards(minqlx.Plugin):
     def __init__(self):
@@ -20,26 +19,34 @@ class leaderboards(minqlx.Plugin):
 
         self.add_command("lb", self.cmd_leaderboard, priority=minqlx.PRI_HIGH, usage = "!lb <^6type^7> <^6timeframe^7>")
         self.add_command("stats", self.cmd_stats, priority=minqlx.PRI_HIGH, usage = "!stats <^6timeframe^7>")
+        self.add_command("help", self.cmd_help, priority=minqlx.PRI_HIGH, usage = "!lb help")
         self.add_hook("team_switch", self.handle_team_switch)
+
+    def help_message(self, player):
+        player.tell("Usage: !lb ^2type^7 [^2timeframe^7] (defaults to 'day' timeframe)")
+        player.tell("Usage: !stats [^2timeframe^7] for personal stats (defaults to 'day' timeframe)")
+        player.tell(f"Leaderboard types: ^2{HIGHLITHED_LIST_ENTRIES_SEPARATOR.join(AVAILABLE_LEADERBOARDS)}")
+        player.tell(f"Timeframes: ^2{HIGHLITHED_LIST_ENTRIES_SEPARATOR.join(AVAILABLE_TIME_FILTERS)}")
+        player.tell("^2day^7: today from 00:00, ^2week^7: this Monday from 00:00, ^2month^7: 1st of this month from 00:00, ^2year^7: January 1st from 00:00, ^2all_time^7: all records since tracking started")
+        player.tell("Check the console to see the help!")
+
+    def cmd_help(self, player, msg, channel):
+        self.help_message(player)
 
     def cmd_leaderboard(self, player, msg, channel):
         lb_type = msg[1].lower()
         time_filter = msg[2].lower() if len(msg) > 2 else DEFAULT_TIME_FILTER
 
         if lb_type == "help":
-            player.tell(f"Usage: !lb <^6type^7> <^2timeframe^7> (defaults to 'day' timeframe)")
-            player.tell(f"Available leaderboards: ^6all^7, ^6{HIGHLITHED_LIST_ENTRIES_SEPARATOR.join(AVAILABLE_LEADERBOARDS)}")
-            player.tell(f"Available timeframes: ^6{HIGHLITHED_LIST_ENTRIES_SEPARATOR.join(AVAILABLE_TIME_FILTERS)}")
+            self.help_message(player)
             return
 
         if not self.is_valid_leaderboard(lb_type):
-            player.tell(f"Invalid leaderboard type: ^2{lb_type}^7.")
-            player.tell(f"Available leaderboards: ^6all^7, ^6{HIGHLITHED_LIST_ENTRIES_SEPARATOR.join(AVAILABLE_LEADERBOARDS)}")
+            self.help_message(player)
             return
 
         if not self.is_valid_time_filter(time_filter):
-            player.tell(f"Invalid time filter: ^2{time_filter}^7.")
-            player.tell(f"Available time filters: ^6{HIGHLITHED_LIST_ENTRIES_SEPARATOR.join(AVAILABLE_TIME_FILTERS)}")
+            self.help_message(player)
             return
 
         weapons = ",".join(RELEVANT_WEAPONS)
@@ -84,7 +91,7 @@ class leaderboards(minqlx.Plugin):
         self.fetch(url, self.handle_leaderboard_request, player)
 
     def request_stats(self, player, time_filter, weapons):
-        url = f"{self.leaderboards_host}/stats?time_filter={time_filter}&weapons={weapons}&steam_id={player.steam_id}"
+        url = f"{self.leaderboards_host}/stats?steam_id={player.steam_id}&time_filter={time_filter}&weapons={weapons}"
         self.fetch(url, self.handle_stats_request, player)
 
     def is_valid_leaderboard(self, lb_type):
@@ -95,13 +102,18 @@ class leaderboards(minqlx.Plugin):
 
     def handle_leaderboard_request(self, data, player):
         table_data = data.get("data", [])
+        # check if data is empty
+        if not table_data:
+            player.tell("No leaderboard data available for this period! Play more games!")
+            return
+
         self.send_multiline_message(player, table_data)
 
     def handle_stats_request(self, data, player):
         stats_data = data.get("data", [])
 
         if not stats_data:
-            player.tell("Failed to fetch data.")
+            player.tell("No stats data available for this period! Play more games!")
             return
 
         stats = stats_data[0]
@@ -114,30 +126,29 @@ class leaderboards(minqlx.Plugin):
 
         def get_color(value):
             if value is None or value == "":
-                return "^7-"  # Default color for missing stats
+                return "^7-"
             try:
                 value = float(value)
             except ValueError:
-                return "^7-"  # If conversion fails, treat as missing data
+                return "^7-"
 
             if value > 35:
-                return f"^2{value}"  # Green
+                return f"^2{value}"
             elif value >= 30:
-                return f"^3{value}"  # Yellow
+                return f"^3{value}"
             else:
-                return f"^1{value}"  # Red
+                return f"^1{value}"
 
-        # Extract stats and apply coloring
         stat_names = ["avg", "lg", "gl", "rl", "rg", "pg", "mg", "hmg", "sg"]
         colored_stats = [f"^7{stat}: {get_color(stats.get(stat))}" for stat in stat_names]
 
-        return ", ".join(colored_stats)  # Join stats with commas for readability
+        return ", ".join(colored_stats)
 
     def request_url(self, lb_type, time_filter, weapons, medals, formatted_table="true", limit=DEFAULT_LIMIT):
-        return f"{self.leaderboards_host}/leaderboards/{lb_type}?time_filter={time_filter}&weapons={weapons}&medals={medals}&formatted_table={formatted_table}&limit={DEFAULT_LIMIT}"
+        return f"{self.leaderboards_host}/leaderboards/{lb_type}?time_filter={time_filter}&weapons={weapons}&medals={medals}&formatted_table={formatted_table}&limit={limit}"
 
     def handle_team_switch(self, player, old_team, new_team):
-        url = self.request_url("best", "day", "", "", "false")
+        url = self.request_url("best", "day", "", "", "false", 3)
         self.fetch(url, self.show_best_players, player)
 
     def show_best_players(self, data, player):
@@ -152,9 +163,12 @@ class leaderboards(minqlx.Plugin):
             player_name = self.truncate(player_name, 15)
             strength = player_data.get("strength")
 
-            top_names += f"{i + 1}. {player_name} (score {strength})\n"
+            top_names += f"{i + 1}. {player_name} (strength {strength})\n"
 
         time.sleep(4)
+
+        if not top_names:
+            top_names = "Play more games!"
 
         player.center_print(f"\n\nToday's ^3BEST^7 players:\n\n{top_names}")
 
@@ -189,4 +203,6 @@ class leaderboards(minqlx.Plugin):
             player.tell(line)
         for _ in range(5):
             player.tell("")
-        player.tell("Check the console to see the leaderboard!")
+        # only show the check the console message if message has more than 1 line
+        if len(message.splitlines()) > 1:
+            player.tell("Check the console to see the leaderboard!")
