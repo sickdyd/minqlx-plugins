@@ -2,6 +2,8 @@ import minqlx
 import time
 import re
 import requests
+from datetime import datetime
+import json
 
 RELEVANT_WEAPONS = ["lightning", "grenade", "rocket", "railgun", "plasma", "machinegun", "hmg", "shotgun"]
 SNIPER_MEDALS = ["accuracy", "headshot", "impressive",]
@@ -10,42 +12,63 @@ AVAILABLE_LEADERBOARDS = ["accuracy", "best", "damage", "damage_taken", "kills",
 AVAILABLE_TIME_FILTERS = ["day", "week", "month", "year", "all_time"]
 DEFAULT_LIMIT = 10
 DEFAULT_TIME_FILTER = "day"
-LEADERBOARS_HOST = "http://qlove_api:3000/api/v1"
 HIGHLITHED_LIST_ENTRIES_SEPARATOR = "^7, ^2"
+LEADERBOARDS_ARG = "^7 | ^2".join(AVAILABLE_LEADERBOARDS)
+TIME_FILTER_ARG = "^7 | ^2".join(AVAILABLE_TIME_FILTERS)
+CACHE_DURATION_IN_SECONDS = 60
 
 class leaderboards(minqlx.Plugin):
     def __init__(self):
-        self.leaderboards_host = self.get_cvar("qlx_qloveLeaderboardsHost") or LEADERBOARS_HOST
+        self.leaderboards_host = self.get_cvar("qlx_qloveLeaderboardsHost")
+        self.logger.info(f"Leaderboards host: {self.leaderboards_host}")
 
-        self.add_command("lb", self.cmd_leaderboard, priority=minqlx.PRI_HIGH, usage = "!lb <^6type^7> <^6timeframe^7>")
-        self.add_command("stats", self.cmd_stats, priority=minqlx.PRI_HIGH, usage = "!stats <^6timeframe^7>")
         self.add_command("help", self.cmd_help, priority=minqlx.PRI_HIGH, usage = "!lb help")
+        self.add_command("lb", self.cmd_leaderboard, priority=minqlx.PRI_HIGH, usage = "!lb {LEADERBOARDS_ARG} [{TIME_FILTER_ARG}]")
+        self.add_command("stats", self.cmd_stats, priority=minqlx.PRI_HIGH, usage = "!stats [{TIME_FILTER_ARG}]")
+        self.add_command("clear_cache", self.cmd_clear_cache, permission="admin", usage = "!clear_cache")
         self.add_hook("team_switch", self.handle_team_switch)
-
-    def help_message(self, player):
-        player.tell("Usage: !lb ^2type^7 [^2timeframe^7] (defaults to 'day' timeframe)")
-        player.tell("Usage: !stats [^2timeframe^7] for personal stats (defaults to 'day' timeframe)")
-        player.tell(f"Leaderboard types: ^2{HIGHLITHED_LIST_ENTRIES_SEPARATOR.join(AVAILABLE_LEADERBOARDS)}")
-        player.tell(f"Timeframes: ^2{HIGHLITHED_LIST_ENTRIES_SEPARATOR.join(AVAILABLE_TIME_FILTERS)}")
-        player.tell("^2day^7: today from 00:00, ^2week^7: this Monday from 00:00, ^2month^7: 1st of this month from 00:00, ^2year^7: January 1st from 00:00, ^2all_time^7: all records since tracking started")
-        player.tell("Check the console to see the help!")
+        self.add_hook("game_end", self.handle_game_end)
 
     def cmd_help(self, player, msg, channel):
         self.help_message(player)
+
+    def help_message(self, player):
+        player.tell("---------------- help ------------------------")
+        player.tell("USAGE: ^2!lb leaderboard ^7[^2time^7]")
+        player.tell("EXAMPLE: ^1!lb accuracy week")
+        player.tell(f"LEADERBOARDS: ^2{LEADERBOARDS_ARG}")
+        player.tell(f"TIMES: ^2{TIME_FILTER_ARG}")
+        player.tell("^2NOTE^7: names with ideograms aren't shown correctly in tables, replaced with regular chars.")
+        player.tell("----------------------------------------------")
+
+        player.tell("Check the console to see the help!")
+
+    def cmd_clear_cache(self, player, msg, channel):
+        self.logger.info("Clearing leaderboard cache.")
+
+        weapons = ",".join(RELEVANT_WEAPONS)
+        for lb in AVAILABLE_LEADERBOARDS:
+            medals = ""
+            lb_type = lb
+
+            if lb == "snipers":
+                lb_type = "medals"
+                medals = ",".join(SNIPER_MEDALS)
+            elif lb == "attackers":
+                lb_type = "medals"
+                medals = ",".join(ATTACKER_MEDALS)
+
+            url = self.request_url(lb_type, DEFAULT_TIME_FILTER, weapons, medals)
+            self.db.delete(url)
+
+    def handle_game_end(self, data):
+        self.cmd_clear_cache(None, None, None)
 
     def cmd_leaderboard(self, player, msg, channel):
         lb_type = msg[1].lower()
         time_filter = msg[2].lower() if len(msg) > 2 else DEFAULT_TIME_FILTER
 
-        if lb_type == "help":
-            self.help_message(player)
-            return
-
-        if not self.is_valid_leaderboard(lb_type):
-            self.help_message(player)
-            return
-
-        if not self.is_valid_time_filter(time_filter):
+        if not self.is_valid_leaderboard(lb_type) or not self.is_valid_time_filter(time_filter):
             self.help_message(player)
             return
 
@@ -59,26 +82,17 @@ class leaderboards(minqlx.Plugin):
             lb_type = "medals"
             medals = ",".join(ATTACKER_MEDALS)
 
-        self.logger.info(f"Leaderboard type: {lb_type}, time_filter: {time_filter}")
         if lb_type == "all":
             self.request_all_leaderboards(player, time_filter, weapons, medals)
         else:
             self.request_leaderboard(player, lb_type, time_filter, weapons, medals)
 
-    def cmd_stats(self, player, msg, channel):
-        time_filter = msg[1].lower() if len(msg) > 1 else DEFAULT_TIME_FILTER
-
-        if not self.is_valid_time_filter(time_filter):
-            player.tell(f"Invalid time filter: ^2{time_filter}^7.")
-            player.tell(f"Available time filters: ^6{HIGHLITHED_LIST_ENTRIES_SEPARATOR.join(AVAILABLE_TIME_FILTERS)}")
-            return
-
-        weapons = ",".join(RELEVANT_WEAPONS)
-
-        self.request_stats(player, time_filter, weapons)
-
     @minqlx.thread
     def request_all_leaderboards(self, player, time_filter, weapons, medals):
+        if not player.is_admin():
+            player.tell("You don't have permission to use this command.")
+            return
+
         for lb in AVAILABLE_LEADERBOARDS:
             if lb in ["snipers", "attackers"]:
                 medals = ",".join(SNIPER_MEDALS) if lb == "snipers" else ",".join(ATTACKER_MEDALS)
@@ -102,12 +116,24 @@ class leaderboards(minqlx.Plugin):
 
     def handle_leaderboard_request(self, data, player):
         table_data = data.get("data", [])
-        # check if data is empty
+
         if not table_data:
             player.tell("No leaderboard data available for this period! Play more games!")
             return
 
         self.send_multiline_message(player, table_data)
+
+    def cmd_stats(self, player, msg, channel):
+        time_filter = msg[1].lower() if len(msg) > 1 else DEFAULT_TIME_FILTER
+
+        if not self.is_valid_time_filter(time_filter):
+            player.tell(f"Invalid time filter: ^2{time_filter}^7.")
+            player.tell(f"Available time filters: ^6{HIGHLITHED_LIST_ENTRIES_SEPARATOR.join(AVAILABLE_TIME_FILTERS)}")
+            return
+
+        weapons = ",".join(RELEVANT_WEAPONS)
+
+        self.request_stats(player, time_filter, weapons)
 
     def handle_stats_request(self, data, player):
         stats_data = data.get("data", [])
@@ -122,8 +148,6 @@ class leaderboards(minqlx.Plugin):
         player.tell(f"{stats_message}")
 
     def colorize_stats(self, stats, player):
-        player.tell(f"Stats for {stats}:")
-
         def get_color(value):
             if value is None or value == "":
                 return "^7-"
@@ -163,12 +187,12 @@ class leaderboards(minqlx.Plugin):
             player_name = self.truncate(player_name, 15)
             strength = player_data.get("strength")
 
-            top_names += f"{i + 1}. {player_name} (strength {strength})\n"
-
-        time.sleep(4)
+            top_names += f"{i + 1}. ^2{player_name}^7 (strength ^3{strength}^7)\n"
 
         if not top_names:
             top_names = "Play more games!"
+
+        time.sleep(4)
 
         player.center_print(f"\n\nToday's ^3BEST^7 players:\n\n{top_names}")
 
@@ -182,6 +206,17 @@ class leaderboards(minqlx.Plugin):
 
     @minqlx.thread
     def fetch(self, endpoint, callback, *args, **kwargs):
+        cached_raw = self.db.get(endpoint)
+        if cached_raw:
+            try:
+                cached = json.loads(cached_raw)
+                cached_date = datetime.fromisoformat(cached["date"])
+                if (datetime.utcnow() - cached_date).total_seconds() <= CACHE_DURATION_IN_SECONDS:
+                    self.logger.info(f"Using cached data for {endpoint}")
+                    return callback(cached["data"], *args, **kwargs)
+            except Exception as e:
+                self.logger.warning(f"Cache parse failed for {endpoint}: {e}")
+
         self.logger.info(f"Fetching {endpoint}")
 
         try:
@@ -191,6 +226,11 @@ class leaderboards(minqlx.Plugin):
                 return callback(None, *args, **kwargs)
 
             data = response.json()
+            payload = {
+                "data": data,
+                "date": datetime.utcnow().isoformat()
+            }
+            self.db.set(endpoint, json.dumps(payload))
             callback(data, *args, **kwargs)
         except Exception as e:
             self.logger.exception(f"Error fetching {endpoint}: {e}")
@@ -201,8 +241,9 @@ class leaderboards(minqlx.Plugin):
         for line in message.splitlines():
             time.sleep(0.01)
             player.tell(line)
-        for _ in range(5):
-            player.tell("")
-        # only show the check the console message if message has more than 1 line
+
         if len(message.splitlines()) > 1:
+            for _ in range(5):
+                player.tell(" ")
+
             player.tell("Check the console to see the leaderboard!")
