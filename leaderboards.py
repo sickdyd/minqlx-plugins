@@ -9,7 +9,7 @@ RELEVANT_WEAPONS = ["lightning", "grenade", "rocket", "railgun", "plasma", "mach
 SNIPER_MEDALS = ["accuracy", "headshot", "impressive",]
 ATTACKER_MEDALS = ["excellent", "firstfrag", "midair", "revenge"]
 AVAILABLE_LEADERBOARDS = ["accuracy", "best", "damage", "damage_taken", "kills", "deaths", "snipers", "attackers", "wins", "losses"]
-AVAILABLE_TIME_FILTERS = ["day", "week", "month", "year", "all_time"]
+AVAILABLE_TIME_FILTERS = ["day", "week", "month", "year", "all"]
 DEFAULT_LIMIT = 10
 DEFAULT_TIME_FILTER = "day"
 HIGHLITHED_LIST_ENTRIES_SEPARATOR = "^7, ^2"
@@ -23,9 +23,10 @@ class leaderboards(minqlx.Plugin):
         self.logger.info(f"Leaderboards host: {self.leaderboards_host}")
 
         self.add_command("help", self.cmd_help, priority=minqlx.PRI_HIGH, usage = "!lb help")
-        self.add_command("lb", self.cmd_leaderboard, priority=minqlx.PRI_HIGH, usage = "!lb {LEADERBOARDS_ARG} [{TIME_FILTER_ARG}]")
         self.add_command("stats", self.cmd_stats, priority=minqlx.PRI_HIGH, usage = "!stats [{TIME_FILTER_ARG}]")
         self.add_command("clear_cache", self.cmd_clear_cache, permission="admin", usage = "!clear_cache")
+        for lb in AVAILABLE_LEADERBOARDS:
+            self.add_command(lb, self.cmd_leaderboard, priority=minqlx.PRI_HIGH, usage=f"!{lb} [{TIME_FILTER_ARG}]")
         self.add_hook("team_switch", self.handle_team_switch)
         self.add_hook("game_end", self.handle_game_end)
 
@@ -34,11 +35,12 @@ class leaderboards(minqlx.Plugin):
 
     def help_message(self, player):
         player.tell("---------------- help ------------------------")
-        player.tell("USAGE: ^2!lb leaderboard ^7[^2time^7]")
-        player.tell("EXAMPLE: ^1!lb accuracy week")
+        player.tell("USAGE: ^2!leaderboard ^7[^2time^7]")
+        player.tell("EXAMPLE: ^1!accuracy week")
         player.tell(f"LEADERBOARDS: ^2{LEADERBOARDS_ARG}")
         player.tell(f"TIMES: ^2{TIME_FILTER_ARG}")
-        player.tell("^2NOTE^7: names with ideograms aren't shown correctly in tables, replaced with regular chars.")
+        player.tell("^2NOTE^7: Names with ideograms won't display correctly in tables; replaced with standard characters.")
+        player.tell("^2注意^7：包含表意文字的名称在表格中可能无法正确显示，已替换为标准字符。")
         player.tell("----------------------------------------------")
 
         player.tell("Check the console to see the help!")
@@ -65,8 +67,8 @@ class leaderboards(minqlx.Plugin):
         self.cmd_clear_cache(None, None, None)
 
     def cmd_leaderboard(self, player, msg, channel):
-        lb_type = msg[1].lower()
-        time_filter = msg[2].lower() if len(msg) > 2 else DEFAULT_TIME_FILTER
+        lb_type = msg[0].lstrip("!").lower()
+        time_filter = msg[1].lower() if len(msg) > 1 else DEFAULT_TIME_FILTER
 
         if not self.is_valid_leaderboard(lb_type) or not self.is_valid_time_filter(time_filter):
             self.help_message(player)
@@ -75,24 +77,21 @@ class leaderboards(minqlx.Plugin):
         weapons = ",".join(RELEVANT_WEAPONS)
         medals = ""
 
-        if msg[1] == "snipers":
+        if lb_type == "snipers":
             lb_type = "medals"
             medals = ",".join(SNIPER_MEDALS)
-        elif msg[1] == "attackers":
+        elif lb_type == "attackers":
             lb_type = "medals"
             medals = ",".join(ATTACKER_MEDALS)
 
         if lb_type == "all":
-            self.request_all_leaderboards(player, time_filter, weapons, medals)
+            return
+            # self.request_all_leaderboards(player, time_filter, weapons, medals)
         else:
             self.request_leaderboard(player, lb_type, time_filter, weapons, medals)
 
     @minqlx.thread
     def request_all_leaderboards(self, player, time_filter, weapons, medals):
-        if not player.is_admin():
-            player.tell("You don't have permission to use this command.")
-            return
-
         for lb in AVAILABLE_LEADERBOARDS:
             if lb in ["snipers", "attackers"]:
                 medals = ",".join(SNIPER_MEDALS) if lb == "snipers" else ",".join(ATTACKER_MEDALS)
@@ -169,6 +168,8 @@ class leaderboards(minqlx.Plugin):
         return ", ".join(colored_stats)
 
     def request_url(self, lb_type, time_filter, weapons, medals, formatted_table="true", limit=DEFAULT_LIMIT):
+        if time_filter == "all":
+            time_filter = "all_time"
         return f"{self.leaderboards_host}/leaderboards/{lb_type}?time_filter={time_filter}&weapons={weapons}&medals={medals}&formatted_table={formatted_table}&limit={limit}"
 
     def handle_team_switch(self, player, old_team, new_team):
