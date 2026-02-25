@@ -1,6 +1,7 @@
 import minqlx
 import time
 import re
+import threading
 import requests
 from datetime import datetime
 import json
@@ -23,27 +24,33 @@ class leaderboards(minqlx.Plugin):
         self.leaderboards_host = self.get_cvar("qlx_qloveLeaderboardsHost")
         self.logger.info(f"Leaderboards host: {self.leaderboards_host}")
 
-        self.add_command("help", self.cmd_help, priority=minqlx.PRI_HIGH, usage = "!lb help")
-        self.add_command("stats", self.cmd_stats, priority=minqlx.PRI_HIGH, usage = "!stats [{TIME_FILTER_ARG}]")
+        self.add_command("help", self.cmd_help, priority=minqlx.PRI_HIGH, usage="!help")
+        self.add_command("stats", self.cmd_stats, priority=minqlx.PRI_HIGH, usage=f"!stats [{TIME_FILTER_ARG}]")
         self.add_command("clear_cache", self.cmd_clear_cache, permission="admin", usage = "!clear_cache")
         for lb in AVAILABLE_LEADERBOARDS:
             self.add_command(lb, self.cmd_leaderboard, priority=minqlx.PRI_HIGH, usage=f"!{lb} [{TIME_FILTER_ARG}]")
         self.add_hook("team_switch", self.handle_team_switch)
         self.add_hook("game_end", self.handle_game_end)
+        self._in_flight_callbacks = {}
+        self._in_flight_lock = threading.Lock()
 
+    @minqlx.thread
     def cmd_help(self, player, msg, channel):
         self.help_message(player)
 
     def help_message(self, player):
-        player.tell("---------------- help ------------------------")
-        player.tell("USAGE: ^2!leaderboard ^7[^2time^7]")
-        player.tell("EXAMPLE: ^1!accuracy week")
-        player.tell(f"LEADERBOARDS: ^2{LEADERBOARDS_ARG}")
-        player.tell(f"TIMES: ^2{TIME_FILTER_ARG}")
-        player.tell("^2NOTE^7: Names with ideograms won't display correctly in tables; replaced with standard characters.")
-        player.tell("^2注意^7：包含表意文字的名称在表格中可能无法正确显示，已替换为标准字符。")
+        player.tell("---------------- leaderboards help -----------")
+        player.tell("^2COMMANDS^7:")
+        player.tell("  ^2!<leaderboard> ^7[^2time^7]  ^7— show a leaderboard")
+        player.tell("  ^2!stats ^7[^2time^7]          ^7— show your personal accuracy stats")
+        player.tell("  ^2!all ^7[^2time^7]            ^7— show all leaderboards")
+        player.tell("  ^2!help                ^7— show this message")
+        player.tell(f"^2LEADERBOARDS^7: ^2accuracy ^7| ^2best ^7| ^2damage ^7| ^2damage_taken ^7| ^2kills ^7| ^2deaths")
+        player.tell(f"             ^2snipers ^7| ^2attackers ^7| ^2wins ^7| ^2losses ^7| ^2all")
+        player.tell(f"^2TIME FILTERS^7:  ^2{TIME_FILTER_ARG}")
+        player.tell("^2EXAMPLE^7: ^1!accuracy week^7, ^1!kills day^7, ^1!snipers month")
+        player.tell("^2NOTE^7: Names with ideograms won't display correctly in tables.")
         player.tell("----------------------------------------------")
-
         player.tell("Check the console to see the help!")
 
     def plugin_load(self):
@@ -88,15 +95,20 @@ class leaderboards(minqlx.Plugin):
         for lb in AVAILABLE_LEADERBOARDS:
             if lb == "all":
                 continue
+            lb_type = lb
             lb_medals = medals
             if lb == "snipers":
-                lb = "medals"
+                lb_type = "medals"
                 lb_medals = ",".join(SNIPER_MEDALS)
             elif lb == "attackers":
-                lb = "medals"
+                lb_type = "medals"
                 lb_medals = ",".join(ATTACKER_MEDALS)
-            time.sleep(0.1)
-            self.request_leaderboard(player, lb, time_filter, weapons, lb_medals)
+            url = self.request_url(lb_type, time_filter, weapons, lb_medals)
+            data = self._fetch_sync(url)
+            table_data = data.get("data", []) if data else []
+            if table_data:
+                self._send_multiline_sync(player, table_data)
+            time.sleep(0.2)
 
     def request_leaderboard(self, player, lb_type, time_filter, weapons, medals):
         url = self.request_url(lb_type, time_filter, weapons, medals)
@@ -105,7 +117,7 @@ class leaderboards(minqlx.Plugin):
     def request_stats(self, player, time_filter, weapons):
         if time_filter == "all":
             time_filter = "all_time"
-        url = f"{self.leaderboards_host}/stats?steam_id={player.steam_id}&time_filter={time_filter}&weapons={weapons}"
+        url = f"{self.leaderboards_host}/api/v1/stats?steam_id={player.steam_id}&time_filter={time_filter}&weapons={weapons}"
         self.fetch(url, self.handle_stats_request, player)
 
     def is_valid_leaderboard(self, lb_type):
@@ -115,7 +127,7 @@ class leaderboards(minqlx.Plugin):
         return time_filter in AVAILABLE_TIME_FILTERS
 
     def handle_leaderboard_request(self, data, player):
-        table_data = data.get("data", [])
+        table_data = data.get("data", []) if data else []
 
         if not table_data:
             player.tell("No leaderboard data available for this period! Play more games!")
@@ -136,7 +148,7 @@ class leaderboards(minqlx.Plugin):
         self.request_stats(player, time_filter, weapons)
 
     def handle_stats_request(self, data, player):
-        stats_data = data.get("data", [])
+        stats_data = data.get("data", []) if data else []
 
         if not stats_data:
             player.tell("No stats data available for this period! Play more games!")
@@ -171,9 +183,16 @@ class leaderboards(minqlx.Plugin):
     def request_url(self, lb_type, time_filter, weapons, medals, formatted_table="true", limit=DEFAULT_LIMIT):
         if time_filter == "all":
             time_filter = "all_time"
-        return f"{self.leaderboards_host}/leaderboards/{lb_type}?time_filter={time_filter}&weapons={weapons}&medals={medals}&formatted_table={formatted_table}&limit={limit}"
+        params = f"time_filter={time_filter}&formatted_table={formatted_table}&limit={limit}"
+        if weapons:
+            params += f"&weapons={weapons}"
+        if medals:
+            params += f"&medals={medals}"
+        return f"{self.leaderboards_host}/api/v1/leaderboards/{lb_type}?{params}"
 
     def handle_team_switch(self, player, old_team, new_team):
+        if new_team not in ("red", "blue", "free"):
+            return
         url = self.request_url("best", "day", "", "", "false", 3)
         self.fetch(url, self.show_best_players, player)
 
@@ -206,8 +225,8 @@ class leaderboards(minqlx.Plugin):
     def truncate(self, text, length):
         return text[:length] if len(text) > length else text
 
-    @minqlx.thread
-    def fetch(self, endpoint, callback, *args, **kwargs):
+    def _fetch_sync(self, endpoint):
+        """Fetch endpoint synchronously, returning data or None. Respects cache and in-flight deduplication."""
         cache_key = LEADERBOARD_CACHE_KEY.format(endpoint)
         cached_raw = self.db.get(cache_key)
         if cached_raw:
@@ -216,31 +235,54 @@ class leaderboards(minqlx.Plugin):
                 cached_date = datetime.fromisoformat(cached["date"])
                 if (datetime.utcnow() - cached_date).total_seconds() <= CACHE_DURATION_IN_SECONDS:
                     self.logger.info(f"Using cached data for {endpoint}")
-                    return callback(cached["data"], *args, **kwargs)
+                    return cached["data"]
             except Exception as e:
                 self.logger.warning(f"Cache parse failed for {endpoint}: {e}")
 
+        event = threading.Event()
+        result = [None]
+
+        with self._in_flight_lock:
+            if endpoint in self._in_flight_callbacks:
+                def waiter(data, ev=event, res=result):
+                    res[0] = data
+                    ev.set()
+                self._in_flight_callbacks[endpoint].append((waiter, [], {}))
+                self.logger.info(f"Request already in flight for {endpoint}, waiting")
+                event.wait(timeout=10)
+                return result[0]
+            self._in_flight_callbacks[endpoint] = []
+
         self.logger.info(f"Fetching {endpoint}")
 
+        data = None
         try:
             response = requests.get(endpoint)
             if response.status_code != requests.codes.ok:
                 self.logger.error(f"Failed to fetch {endpoint}: {response.status_code}")
-                return callback(None, *args, **kwargs)
-
-            data = response.json()
-            payload = {
-                "data": data,
-                "date": datetime.utcnow().isoformat()
-            }
-            self.db.set(cache_key, json.dumps(payload))
-            callback(data, *args, **kwargs)
+            else:
+                data = response.json()
+                payload = {
+                    "data": data,
+                    "date": datetime.utcnow().isoformat()
+                }
+                self.db.set(cache_key, json.dumps(payload), ex=CACHE_DURATION_IN_SECONDS * 2)
         except Exception as e:
             self.logger.exception(f"Error fetching {endpoint}: {e}")
-            callback(None, *args, **kwargs)
+        finally:
+            with self._in_flight_lock:
+                pending = self._in_flight_callbacks.pop(endpoint, [])
+            for cb, a, kw in pending:
+                cb(data, *a, **kw)
+
+        return data
 
     @minqlx.thread
-    def send_multiline_message(self, player, message):
+    def fetch(self, endpoint, callback, *args, **kwargs):
+        data = self._fetch_sync(endpoint)
+        callback(data, *args, **kwargs)
+
+    def _send_multiline_sync(self, player, message):
         for line in message.splitlines():
             time.sleep(0.01)
             player.tell(line)
@@ -248,5 +290,8 @@ class leaderboards(minqlx.Plugin):
         if len(message.splitlines()) > 1:
             for _ in range(5):
                 player.tell(" ")
-
             player.tell("Check the console to see the leaderboard!")
+
+    @minqlx.thread
+    def send_multiline_message(self, player, message):
+        self._send_multiline_sync(player, message)
