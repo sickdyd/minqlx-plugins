@@ -64,7 +64,7 @@ class leaderboards(minqlx.Plugin):
 
     def handle_game_end(self, data):
         self.cmd_clear_cache(None, None, None)
-        url = self.request_url("best", "day", "", "", "false", 3)
+        url = self.request_url("best", "day", "", "", "false", DEFAULT_LIMIT)
         self.fetch(url, lambda *a, **kw: None)
 
     def cmd_leaderboard(self, player, msg, channel):
@@ -75,7 +75,7 @@ class leaderboards(minqlx.Plugin):
             self.help_message(player)
             return
 
-        weapons = ",".join(RELEVANT_WEAPONS)
+        weapons = "" if lb_type == "best" else ",".join(RELEVANT_WEAPONS)
         medals = ""
 
         if lb_type == "snipers":
@@ -193,7 +193,7 @@ class leaderboards(minqlx.Plugin):
     def handle_team_switch(self, player, old_team, new_team):
         if new_team not in ("red", "blue", "free"):
             return
-        url = self.request_url("best", "day", "", "", "false", 3)
+        url = self.request_url("best", "day", "", "", "false", DEFAULT_LIMIT)
         self.fetch(url, self.show_best_players, player)
 
     def show_best_players(self, data, player):
@@ -202,7 +202,7 @@ class leaderboards(minqlx.Plugin):
             return
 
         top_names = ""
-        for i, player_data in enumerate(data.get("data", [])):
+        for i, player_data in enumerate(data.get("data", [])[:3]):
             player_name = player_data.get("name", "Unknown")
             player_name = self.strip_formatting(player_name)
             player_name = self.truncate(player_name, 15)
