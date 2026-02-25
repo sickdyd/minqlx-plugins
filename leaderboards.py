@@ -16,7 +16,7 @@ DEFAULT_TIME_FILTER = "day"
 HIGHLITHED_LIST_ENTRIES_SEPARATOR = "^7, ^2"
 LEADERBOARDS_ARG = "^7 | ^2".join(AVAILABLE_LEADERBOARDS)
 TIME_FILTER_ARG = "^7 | ^2".join(AVAILABLE_TIME_FILTERS)
-CACHE_DURATION_IN_SECONDS = 300
+CACHE_DURATION_IN_SECONDS = 60
 LEADERBOARD_CACHE_KEY = "lb:{}"
 
 class leaderboards(minqlx.Plugin):
@@ -62,6 +62,7 @@ class leaderboards(minqlx.Plugin):
         for key in self.db.keys("lb:*"):
             self.db.delete(key)
 
+    @minqlx.thread
     def handle_game_end(self, data):
         self.cmd_clear_cache(None, None, None)
         url = self.request_url("best", "day", "", "", "false", DEFAULT_LIMIT)
@@ -266,7 +267,7 @@ class leaderboards(minqlx.Plugin):
                     "data": data,
                     "date": datetime.utcnow().isoformat()
                 }
-                self.db.set(cache_key, json.dumps(payload), ex=CACHE_DURATION_IN_SECONDS * 2)
+                self.db.set(cache_key, json.dumps(payload), ex=CACHE_DURATION_IN_SECONDS)
         except Exception as e:
             self.logger.exception(f"Error fetching {endpoint}: {e}")
         finally:
