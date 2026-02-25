@@ -8,14 +8,15 @@ import json
 RELEVANT_WEAPONS = ["lightning", "grenade", "rocket", "railgun", "plasma", "machinegun", "hmg", "shotgun"]
 SNIPER_MEDALS = ["accuracy", "headshot", "impressive",]
 ATTACKER_MEDALS = ["excellent", "firstfrag", "midair", "revenge"]
-AVAILABLE_LEADERBOARDS = ["accuracy", "best", "damage", "damage_taken", "kills", "deaths", "snipers", "attackers", "wins", "losses"]
+AVAILABLE_LEADERBOARDS = ["accuracy", "best", "damage", "damage_taken", "kills", "deaths", "snipers", "attackers", "wins", "losses", "all"]
 AVAILABLE_TIME_FILTERS = ["day", "week", "month", "year", "all"]
 DEFAULT_LIMIT = 10
 DEFAULT_TIME_FILTER = "day"
 HIGHLITHED_LIST_ENTRIES_SEPARATOR = "^7, ^2"
 LEADERBOARDS_ARG = "^7 | ^2".join(AVAILABLE_LEADERBOARDS)
 TIME_FILTER_ARG = "^7 | ^2".join(AVAILABLE_TIME_FILTERS)
-CACHE_DURATION_IN_SECONDS = 60
+CACHE_DURATION_IN_SECONDS = 300
+LEADERBOARD_CACHE_KEY = "lb:{}"
 
 class leaderboards(minqlx.Plugin):
     def __init__(self):
@@ -45,26 +46,19 @@ class leaderboards(minqlx.Plugin):
 
         player.tell("Check the console to see the help!")
 
+    def plugin_load(self):
+        self.handle_game_end(None)
+
     def cmd_clear_cache(self, player, msg, channel):
         self.logger.info("Clearing leaderboard cache.")
 
-        weapons = ",".join(RELEVANT_WEAPONS)
-        for lb in AVAILABLE_LEADERBOARDS:
-            medals = ""
-            lb_type = lb
-
-            if lb == "snipers":
-                lb_type = "medals"
-                medals = ",".join(SNIPER_MEDALS)
-            elif lb == "attackers":
-                lb_type = "medals"
-                medals = ",".join(ATTACKER_MEDALS)
-
-            url = self.request_url(lb_type, DEFAULT_TIME_FILTER, weapons, medals)
-            self.db.delete(url)
+        for key in self.db.keys("lb:*"):
+            self.db.delete(key)
 
     def handle_game_end(self, data):
         self.cmd_clear_cache(None, None, None)
+        url = self.request_url("best", "day", "", "", "false", 3)
+        self.fetch(url, lambda *a, **kw: None)
 
     def cmd_leaderboard(self, player, msg, channel):
         lb_type = msg[0].lstrip("!").lower()
@@ -85,25 +79,32 @@ class leaderboards(minqlx.Plugin):
             medals = ",".join(ATTACKER_MEDALS)
 
         if lb_type == "all":
-            return
-            # self.request_all_leaderboards(player, time_filter, weapons, medals)
+            self.request_all_leaderboards(player, time_filter, weapons, medals)
         else:
             self.request_leaderboard(player, lb_type, time_filter, weapons, medals)
 
     @minqlx.thread
     def request_all_leaderboards(self, player, time_filter, weapons, medals):
         for lb in AVAILABLE_LEADERBOARDS:
-            if lb in ["snipers", "attackers"]:
-                medals = ",".join(SNIPER_MEDALS) if lb == "snipers" else ",".join(ATTACKER_MEDALS)
+            if lb == "all":
+                continue
+            lb_medals = medals
+            if lb == "snipers":
                 lb = "medals"
+                lb_medals = ",".join(SNIPER_MEDALS)
+            elif lb == "attackers":
+                lb = "medals"
+                lb_medals = ",".join(ATTACKER_MEDALS)
             time.sleep(0.1)
-            self.request_leaderboard(player, lb, time_filter, weapons, medals)
+            self.request_leaderboard(player, lb, time_filter, weapons, lb_medals)
 
     def request_leaderboard(self, player, lb_type, time_filter, weapons, medals):
         url = self.request_url(lb_type, time_filter, weapons, medals)
         self.fetch(url, self.handle_leaderboard_request, player)
 
     def request_stats(self, player, time_filter, weapons):
+        if time_filter == "all":
+            time_filter = "all_time"
         url = f"{self.leaderboards_host}/stats?steam_id={player.steam_id}&time_filter={time_filter}&weapons={weapons}"
         self.fetch(url, self.handle_stats_request, player)
 
@@ -193,7 +194,7 @@ class leaderboards(minqlx.Plugin):
         if not top_names:
             top_names = "Play more games!"
 
-        time.sleep(4)
+        time.sleep(1)
 
         player.center_print(f"\n\nToday's ^3BEST^7 players:\n\n{top_names}")
 
@@ -207,7 +208,8 @@ class leaderboards(minqlx.Plugin):
 
     @minqlx.thread
     def fetch(self, endpoint, callback, *args, **kwargs):
-        cached_raw = self.db.get(endpoint)
+        cache_key = LEADERBOARD_CACHE_KEY.format(endpoint)
+        cached_raw = self.db.get(cache_key)
         if cached_raw:
             try:
                 cached = json.loads(cached_raw)
@@ -231,7 +233,7 @@ class leaderboards(minqlx.Plugin):
                 "data": data,
                 "date": datetime.utcnow().isoformat()
             }
-            self.db.set(endpoint, json.dumps(payload))
+            self.db.set(cache_key, json.dumps(payload))
             callback(data, *args, **kwargs)
         except Exception as e:
             self.logger.exception(f"Error fetching {endpoint}: {e}")
