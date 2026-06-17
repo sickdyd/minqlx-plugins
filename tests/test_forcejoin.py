@@ -67,6 +67,20 @@ def test_joinable_spectators_empty():
     assert forcejoin.joinable_spectators([]) == []
 
 
+def test_enforcement_delay_keeps_full_grace_on_long_countdown():
+    # 10s countdown, 5s grace, 1.5s lead -> full 5s grace, fires 5s before start.
+    assert forcejoin.enforcement_delay(5, 10.0, lead=1.5) == 5
+
+
+def test_enforcement_delay_shrinks_to_beat_eveners_on_short_countdown():
+    # 4s countdown -> must fire at 4 - 1.5 = 2.5s, shorter than the 5s grace.
+    assert forcejoin.enforcement_delay(5, 4.0, lead=1.5) == 2.5
+
+
+def test_enforcement_delay_never_negative():
+    assert forcejoin.enforcement_delay(5, 1.0, lead=1.5) == 0
+
+
 if __name__ == "__main__":
     failures = 0
     for name, fn in sorted(globals().items()):
