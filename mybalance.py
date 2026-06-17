@@ -967,8 +967,6 @@ class mybalance(iouonegirlPlugin):
     # but check it again to make sure the round starts even
     def handle_round_start(self, round_number):
         self.balance_before_start(round_number, True)
-        # Also re-balance on skill ratings at every round start.
-        self.autobalance_on_skill()
     # If there is no round delay, then round_count hasnt been called.
 ##        if self.game.type_short == "ft":
 ##            if not int(self.get_cvar('g_freezeRoundDelay')):
@@ -977,24 +975,6 @@ class mybalance(iouonegirlPlugin):
 ##            if not int(self.get_cvar('g_roundWarmupDelay')):
 ##                self.balance_before_start(round_number, True)
 
-    # Re-balance teams on skill ratings, reusing the working balance-plugin
-    # request (see do_balance in handle_game_countdown). Runs slightly delayed so
-    # the team-size evening in balance_before_start settles first. Real switches
-    # are announced by the balance plugin via its own chat message; the no-op
-    # "Teams are good!" reply is routed to the console to avoid per-round chat spam.
-    @minqlx.delay(1.5)
-    def autobalance_on_skill(self):
-        try:
-            if not self.game_active:
-                return
-            if 'balance' not in minqlx.Plugin._loaded_plugins:
-                return
-            b = minqlx.Plugin._loaded_plugins['balance']
-            teams = self.teams()
-            players = dict([(p.steam_id, self.game.type_short) for p in teams["red"] + teams["blue"]])
-            b.add_request(players, b.callback_balance, minqlx.CONSOLE_CHANNEL)
-        except Exception:
-            pass
 
     def handle_game_start(self, data):
         self.game_active = True
