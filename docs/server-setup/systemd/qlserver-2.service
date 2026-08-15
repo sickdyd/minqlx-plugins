@@ -1,0 +1,22 @@
+[Unit]
+Description=Quake Live Server (Instance 2 - port 27961)
+After=network.target
+
+[Service]
+Type=simple
+User=qlserver
+Group=qlserver
+WorkingDirectory=/home/qlserver/serverfiles
+Environment=LD_PRELOAD=./minqlx.x64.so
+Environment=LD_LIBRARY_PATH=./linux64
+ExecStart=/home/qlserver/serverfiles/qzeroded.x64 +set zmq_stats_enable 1 +set net_port 27961 +exec qlserver-2.cfg
+Restart=on-failure
+RestartSec=10
+TimeoutStopSec=5
+KillSignal=SIGKILL
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=qlserver-2
+
+[Install]
+WantedBy=multi-user.target

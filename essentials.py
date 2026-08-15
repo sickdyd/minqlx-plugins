@@ -666,6 +666,7 @@ class essentials(minqlx.Plugin):
         self.change_map(msg[1], msg[2] if len(msg) > 2 else None)
 
     def cmd_help(self, player, msg, channel):
+        return
         # TODO: Perhaps print some essential commands in !help
         player.tell("minqlx: ^6{}^7 - Plugins: ^6{}".format(minqlx.__version__, minqlx.__plugins_version__))
         player.tell("See ^6github.com/MinoMino/minqlx^7 for more info about the mod and its commands.")

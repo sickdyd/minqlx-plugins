@@ -1,0 +1,8 @@
+# qlserver user crontab (crontab -l)
+# Nightly DB backup to Backblaze B2, staggered server restarts, qlove maintenance.
+
+0 3 * * * /home/qlserver/scripts/qlove-backup.sh >> /home/qlserver/logs/qlove-backup.log 2>&1
+0 4 * * * sudo systemctl restart qlserver
+0 5 * * * sudo systemctl restart qlserver-2
+5 4 * * * docker compose -f /home/qlserver/qlove/docker-compose.yml restart
+0 0 * * * docker exec qlove-qapi-1 bin/rails elo:snapshot >> /home/qlserver/qlove/log/elo_snapshot.log 2>&1
