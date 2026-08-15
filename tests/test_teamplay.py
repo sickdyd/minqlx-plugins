@@ -419,6 +419,21 @@ class TestTeamplay(unittest.TestCase):
         verify(announced, times=0).put(any_matcher(str))
         assert_plugin_sent_to_console("^3Teams evened out^7: nobody has to sit out after all.")
 
+    def test_evened_out_is_not_announced_for_a_round_that_announced_nothing(self):
+        # The flag survived rounds where phase 1 returned early and phase 2 was
+        # skipped, so a later quiet round claimed the teams had evened out when
+        # nothing was ever named.
+        red = [fake_player(HUMAN + 1, "r1", "red"), fake_player(HUMAN + 2, "r2", "red")]
+        blue = [fake_player(HUMAN + 3, "b1", "blue"), fake_player(HUMAN + 4, "b2", "blue")]
+        self.setup_roster(red, blue)
+        self.plugin.announced_move = True  # left over from an earlier round
+
+        self.plugin.handle_round_countdown(7)
+        self.plugin.even_and_balance(balance=False)
+
+        verify(Plugin, times=0).msg(
+            "^3Teams evened out^7: nobody has to sit out after all.")
+
     def test_several_spectators_are_warned_in_one_line(self):
         first = fake_player(HUMAN + 5, "first", "spectator")
         second = fake_player(HUMAN + 7, "second", "spectator")

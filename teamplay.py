@@ -211,6 +211,11 @@ class teamplay(minqlx.Plugin):
     def handle_round_countdown(self, round_number):
         self.round_live = False
         self.round_token += 1
+        # Cleared here rather than only where it is consumed: phase 1 can return
+        # early (level teams, too few players) and phase 2 can be skipped
+        # entirely, and a leftover True announces "teams evened out" in a later
+        # round where nothing was ever announced.
+        self.announced_move = False
 
         # Warn straight away, so the spectators have the whole countdown to act,
         # and do any pending balancing now rather than at the last second.
@@ -305,6 +310,10 @@ class teamplay(minqlx.Plugin):
         return self.game.type_short in SUPPORTED_GAMETYPES
 
     def countdown_seconds(self):
+        # Read from a worker thread, where the game can have ended in between
+        # and an AttributeError would vanish into the log.
+        if not self.game:
+            return 10.0
         cvar = "g_freezeRoundDelay" if self.game.type_short == "ft" else "g_roundWarmupDelay"
         try:
             return int(self.get_cvar(cvar)) / 1000.0
@@ -382,14 +391,14 @@ class teamplay(minqlx.Plugin):
         self.even_and_balance_next_frame(False, token, kick=True)
 
     @minqlx.next_frame
-    def even_and_balance_next_frame(self, balance, token=None, kick=False, announce=False):
+    def even_and_balance_next_frame(self, balance, token=None, kick=False):
         # Applied in a frame of its own so the countdown text and sound are not
         # interrupted, and so every decision lands together.
         if token is not None and token != self.round_token:
             return  # a new round already started; this pass is stale
-        self.even_and_balance(balance, kick, announce)
+        self.even_and_balance(balance, kick)
 
-    def even_and_balance(self, balance, kick=False, announce=False):
+    def even_and_balance(self, balance, kick=False):
         if not self.is_actionable():
             return
 
@@ -417,12 +426,6 @@ class teamplay(minqlx.Plugin):
         # one in front of us.
         plan = self.plan_even_teams(red, blue)
 
-        if announce:
-            # Nothing warned anyone in advance here (a match is starting), so
-            # say it now. The move lands in this same frame, so `quiet` below
-            # keeps it from being announced twice.
-            self.announce_round_actions(plan, [])
-
         if not plan and self.announced_move:
             # We named somebody at the start of the countdown and the teams
             # sorted themselves out since. Say so, or the announcement just
@@ -433,7 +436,7 @@ class teamplay(minqlx.Plugin):
 
         # The player who joined last on the bigger team is the one who made the
         # teams uneven, so they are the one who sits out.
-        self.even_teams(plan, quiet=announce)
+        self.even_teams(plan)
 
         if balance:
             self.balance_by_rating()
@@ -543,25 +546,19 @@ class teamplay(minqlx.Plugin):
         self.msg("^3{}^7 just connected, they get a moment before being asked to join"
                  .format(listed))
 
-    def even_teams(self, plan, quiet=False):
-        """Apply a plan produced by plan_even_teams.
-
-        `quiet` is for when announce_round_actions already named these players
-        in the same frame, so the server does not say it twice.
-        """
+    def even_teams(self, plan):
+        """Apply a plan produced by plan_even_teams, saying what it did."""
         for player, destination, origin in plan:
             if destination == "spectator":
                 self.benched[player.steam_id] = self.round_token
                 self.warned.pop(player.steam_id, None)
                 player.put("spectator")
-                if not quiet:
-                    self.msg("^6Uneven teams^7: {} joined last and was moved to spectator"
-                             .format(player.name))
+                self.msg("^6Uneven teams^7: {} joined last and was moved to spectator"
+                         .format(player.name))
             else:
                 player.put(destination)
-                if not quiet:
-                    self.msg("^6Uneven teams^7: moved {} from {} to {}"
-                             .format(player.name, origin, destination))
+                self.msg("^6Uneven teams^7: moved {} from {} to {}"
+                         .format(player.name, origin, destination))
 
     def last_joiner(self, team):
         """The player on this team who most recently joined it."""
