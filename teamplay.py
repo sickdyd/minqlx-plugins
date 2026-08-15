@@ -134,8 +134,6 @@ class teamplay(minqlx.Plugin):
         # round: "fair", "unfair", "uneven" or "balancing"
         self.balance_state = None
 
-        self.adopt_connected_players()
-
         self.add_hook("game_countdown", self.handle_game_countdown)
         self.add_hook("round_countdown", self.handle_round_countdown)
         self.add_hook("round_start", self.handle_round_start)
@@ -145,28 +143,6 @@ class teamplay(minqlx.Plugin):
         self.add_hook("player_disconnect", self.handle_player_disconnect)
         self.add_hook("game_end", self.handle_game_end)
         self.add_hook("map", self.handle_map)
-
-    def adopt_connected_players(self):
-        """Treat everyone already here as having just arrived.
-
-        On a reload mid-match this dict starts empty, and an empty connect time
-        reads as "connected long ago", so every spectator would be warnable in
-        the very next round with none of the grace they are promised. Giving
-        them the benefit of the doubt costs one minute and cannot punish
-        anybody for our restart.
-        """
-        now = time.time()
-        try:
-            players = self.players()
-        except Exception:
-            return
-        for player in players or []:
-            sid = getattr(player, "steam_id", 0)
-            if not sid:
-                continue
-            self.connect_times[sid] = now
-            if getattr(player, "team", "spectator") in ("red", "blue", "free"):
-                self.team_join_times[sid] = now
 
     # ------------------------------------------------------------------ hooks
 
@@ -560,12 +536,23 @@ class teamplay(minqlx.Plugin):
                 self.msg("^6Uneven teams^7: moved {} from {} to {}"
                          .format(player.name, origin, destination))
 
+    def find_time(self, player):
+        """When this player last joined a team, stamping them if unknown.
+
+        Straight from autospec: a player we have never seen counts as having
+        arrived just now. That is what makes a reload mid-match harmless --
+        there is no separate path to get wrong.
+        """
+        sid = player.steam_id
+        if sid not in self.team_join_times:
+            self.team_join_times[sid] = time.time()
+        return self.team_join_times[sid]
+
     def last_joiner(self, team):
         """The player on this team who most recently joined it."""
         if not team:
             return None
-        return max(team, key=lambda p: self.team_join_times.get(
-            p.steam_id, self.connect_times.get(p.steam_id, 0)))
+        return max(team, key=self.find_time)
 
     def kick_warned(self, spectators):
         for player in spectators:
