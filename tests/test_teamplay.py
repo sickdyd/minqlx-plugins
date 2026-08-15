@@ -40,15 +40,13 @@ class TestTeamplay(unittest.TestCase):
     # ------------------------------------------------------------- helpers
 
     def setup_roster(self, red, blue, spectators=()):
-        """Put players on teams and give everyone a settled join/connect time."""
+        """Put players on teams and give everyone a settled connect time."""
         players = list(red) + list(blue) + list(spectators)
         connected_players(*players)
 
         old = time() - 3600
         for player in players:
             self.plugin.connect_times[player.steam_id] = old
-        for player in list(red) + list(blue):
-            self.plugin.team_join_times[player.steam_id] = old
         # The imbalance is old news unless a test says otherwise.
         self.plugin.uneven_since = old
         return players
@@ -87,13 +85,13 @@ class TestTeamplay(unittest.TestCase):
         self.assertNotIn(spectator.steam_id, self.plugin.warned)
         self.assert_kicked(spectator, times=0)
 
-    def test_uneven_teams_bench_the_last_player_to_join(self):
+    def test_uneven_teams_bench_the_last_player_to_connect(self):
         early = fake_player(HUMAN + 1, "early", "red")
         latest = fake_player(HUMAN + 2, "latest", "red")
         red = [early, fake_player(HUMAN + 6, "r3", "red"), latest]
         blue = [fake_player(HUMAN + 3, "b1", "blue"), fake_player(HUMAN + 4, "b2", "blue")]
         self.setup_roster(red, blue)
-        self.plugin.team_join_times[latest.steam_id] = time()
+        self.plugin.connect_times[latest.steam_id] = time()
 
         self.plugin.review_spectators()
         self.plugin.even_and_balance(balance=False)
@@ -105,7 +103,7 @@ class TestTeamplay(unittest.TestCase):
         latest = fake_player(HUMAN + 2, "latest", "red")
         self.setup_roster([fake_player(HUMAN + 1, "early", "red"), fake_player(HUMAN + 6, "r3", "red"), latest],
                           [fake_player(HUMAN + 3, "b1", "blue"), fake_player(HUMAN + 4, "b2", "blue")])
-        self.plugin.team_join_times[latest.steam_id] = time()
+        self.plugin.connect_times[latest.steam_id] = time()
 
         self.plugin.review_spectators()
         self.plugin.even_and_balance(balance=False)
@@ -144,7 +142,7 @@ class TestTeamplay(unittest.TestCase):
         latest = fake_player(HUMAN + 2, "latest", "red")
         self.setup_roster([fake_player(HUMAN + 1, "r1", "red"), fake_player(HUMAN + 6, "r3", "red"), latest],
                           [fake_player(HUMAN + 3, "b1", "blue"), fake_player(HUMAN + 4, "b2", "blue")])
-        self.plugin.team_join_times[latest.steam_id] = time()
+        self.plugin.connect_times[latest.steam_id] = time()
 
         self.plugin.review_spectators()
 
@@ -160,7 +158,7 @@ class TestTeamplay(unittest.TestCase):
         bot = fake_player(90071996842377216, "Sarge", "red")
         self.setup_roster([fake_player(HUMAN + 1, "r1", "red"), fake_player(HUMAN + 6, "r3", "red"), bot],
                           [fake_player(HUMAN + 3, "b1", "blue"), fake_player(HUMAN + 4, "b2", "blue")])
-        self.plugin.team_join_times[bot.steam_id] = time()
+        self.plugin.connect_times[bot.steam_id] = time()
 
         self.plugin.review_spectators()
 
@@ -172,13 +170,13 @@ class TestTeamplay(unittest.TestCase):
         latest = fake_player(HUMAN + 2, "latest", "red")
         self.setup_roster([fake_player(HUMAN + 1, "r1", "red"), fake_player(HUMAN + 6, "r3", "red"), latest],
                           [fake_player(HUMAN + 3, "b1", "blue"), fake_player(HUMAN + 4, "b2", "blue")])
-        self.plugin.team_join_times[latest.steam_id] = time()
+        self.plugin.connect_times[latest.steam_id] = time()
 
         self.plugin.even_and_balance(balance=False)
 
         assert_player_was_put_on(latest, "spectator")
         assert_plugin_sent_to_console(
-            "^6Uneven teams^7: latest joined last and was moved to spectator")
+            "^6Uneven teams^7: latest connected last and was moved to spectator")
 
     def test_spectator_warned_this_round_is_not_kicked_at_the_end_of_it(self):
         # Warned in phase 1, phase 2 comes ~10s later in the SAME round. They
@@ -270,7 +268,7 @@ class TestTeamplay(unittest.TestCase):
                           [spectator])
         self.warn_in_earlier_round(spectator)
         # Somebody joined a moment ago: too recent for anyone to have reacted.
-        self.plugin.team_join_times[latest.steam_id] = time()
+        self.plugin.connect_times[latest.steam_id] = time()
         self.plugin.uneven_since = time()
 
         self.plugin.review_spectators()
@@ -329,7 +327,7 @@ class TestTeamplay(unittest.TestCase):
                fake_player(HUMAN + 3, "r3", "red"), fake_player(HUMAN + 4, "r4", "red"), latest]
         blue = [fake_player(HUMAN + 6, "b1", "blue"), fake_player(HUMAN + 7, "b2", "blue")]
         self.setup_roster(red, blue, [spectator])
-        self.plugin.team_join_times[latest.steam_id] = time()
+        self.plugin.connect_times[latest.steam_id] = time()
         self.warn_in_earlier_round(spectator)
 
         self.plugin.handle_game_countdown()
@@ -350,7 +348,7 @@ class TestTeamplay(unittest.TestCase):
         self.setup_roster([fake_player(HUMAN + 1, "r1", "red"), fake_player(HUMAN + 2, "r2", "red"), latest],
                           [fake_player(HUMAN + 3, "b1", "blue"), fake_player(HUMAN + 4, "b2", "blue")],
                           [spectator])
-        self.plugin.team_join_times[latest.steam_id] = time()
+        self.plugin.connect_times[latest.steam_id] = time()
 
         # Round 1: one fused line, autospec and warning together.
         self.plugin.round_token = 1
@@ -376,7 +374,7 @@ class TestTeamplay(unittest.TestCase):
         red = [fake_player(HUMAN + 1, "r1", "red"), fake_player(HUMAN + 2, "r2", "red"), announced]
         blue = [fake_player(HUMAN + 3, "b1", "blue"), fake_player(HUMAN + 4, "b2", "blue")]
         self.setup_roster(red, blue)
-        self.plugin.team_join_times[announced.steam_id] = time()
+        self.plugin.connect_times[announced.steam_id] = time()
 
         self.plugin.review_spectators()
         assert_plugin_sent_to_console("^3announced^7 will be specced")
@@ -384,8 +382,8 @@ class TestTeamplay(unittest.TestCase):
         # A later joiner arrives during the countdown.
         latecomer = fake_player(HUMAN + 7, "latecomer", "red")
         self.setup_roster(red + [latecomer], blue)
-        self.plugin.team_join_times[announced.steam_id] = time() - 5
-        self.plugin.team_join_times[latecomer.steam_id] = time()
+        self.plugin.connect_times[announced.steam_id] = time() - 5
+        self.plugin.connect_times[latecomer.steam_id] = time()
 
         self.plugin.even_and_balance(balance=False, kick=True)
 
@@ -405,7 +403,7 @@ class TestTeamplay(unittest.TestCase):
         red = [fake_player(HUMAN + 1, "r1", "red"), other, announced]
         blue = [fake_player(HUMAN + 3, "b1", "blue"), fake_player(HUMAN + 4, "b2", "blue")]
         self.setup_roster(red, blue)
-        self.plugin.team_join_times[announced.steam_id] = time()
+        self.plugin.connect_times[announced.steam_id] = time()
 
         self.plugin.review_spectators()
         assert_plugin_sent_to_console("^3announced^7 will be specced")
@@ -442,7 +440,7 @@ class TestTeamplay(unittest.TestCase):
         self.setup_roster([fake_player(HUMAN + 1, "r1", "red"), fake_player(HUMAN + 2, "r2", "red"), latest],
                           [fake_player(HUMAN + 3, "b1", "blue"), fake_player(HUMAN + 4, "b2", "blue")],
                           [first, second, third])
-        self.plugin.team_join_times[latest.steam_id] = time()
+        self.plugin.connect_times[latest.steam_id] = time()
         self.plugin.round_token = 1
 
         self.plugin.review_spectators()
@@ -480,7 +478,7 @@ class TestTeamplay(unittest.TestCase):
         self.setup_roster([fake_player(HUMAN + 1, "r1", "red"), fake_player(HUMAN + 2, "r2", "red"), latest],
                           [fake_player(HUMAN + 3, "b1", "blue"), fake_player(HUMAN + 4, "b2", "blue")],
                           [going, noticed])
-        self.plugin.team_join_times[latest.steam_id] = time()
+        self.plugin.connect_times[latest.steam_id] = time()
         self.plugin.round_token = 4
         self.plugin.warned[going.steam_id] = 3  # flagged last round
 
@@ -500,7 +498,7 @@ class TestTeamplay(unittest.TestCase):
         self.setup_roster([fake_player(HUMAN + 1, "r1", "red"), fake_player(HUMAN + 2, "r2", "red"), latest],
                           [fake_player(HUMAN + 3, "b1", "blue"), fake_player(HUMAN + 4, "b2", "blue")],
                           [newcomer])
-        self.plugin.team_join_times[latest.steam_id] = time()
+        self.plugin.connect_times[latest.steam_id] = time()
         self.plugin.connect_times[newcomer.steam_id] = time() - 20  # 40s of grace left
 
         self.plugin.review_spectators()
@@ -732,7 +730,7 @@ class TestTeamplay(unittest.TestCase):
         blue = [fake_player(HUMAN + 3, "b1", "blue"), fake_player(HUMAN + 4, "b2", "blue")]
         self.setup_roster(red, blue, [spectator])
         self.warn_in_earlier_round(spectator)
-        self.plugin.team_join_times[latest.steam_id] = time()
+        self.plugin.connect_times[latest.steam_id] = time()
 
         self.plugin.review_spectators()
         self.plugin.even_and_balance(balance=True, kick=True)
@@ -881,7 +879,7 @@ class TestTeamplay(unittest.TestCase):
         latest = fake_player(HUMAN + 3, "latest", "red")
         self.setup_roster([fake_player(HUMAN + 1, "r1", "red"), fake_player(HUMAN + 2, "r2", "red"), latest],
                           [fake_player(HUMAN + 4, "b1", "blue")])
-        self.plugin.team_join_times[latest.steam_id] = time()
+        self.plugin.connect_times[latest.steam_id] = time()
 
         self.plugin.review_spectators()
         self.plugin.even_and_balance(balance=False)

@@ -31,7 +31,8 @@
 #   Phase 2, one second before the round starts:
 #     - kick spectators that were warned in an EARLIER round and are still
 #       watching (they are treated as AFK)
-#     - even the teams by benching the player who joined last on the bigger team
+#     - even the teams by benching the last player to connect on the bigger
+#       team
 #
 # Nothing is ever moved earlier than one second before a round starts, match
 # start included: the countdown is the window in which people join, and taking
@@ -111,8 +112,6 @@ class teamplay(minqlx.Plugin):
         # record is dropped the moment they rejoin, disconnect, or are found on
         # a team again.
         self.benched = {}
-        # steam_id -> when they last entered red or blue
-        self.team_join_times = {}
         # steam_id -> when they connected
         self.connect_times = {}
         # when the teams became uneven, or None while they are even
@@ -157,7 +156,6 @@ class teamplay(minqlx.Plugin):
         sid = player.steam_id
         self.warned.pop(sid, None)
         self.benched.pop(sid, None)
-        self.team_join_times.pop(sid, None)
         self.connect_times.pop(sid, None)
         self.refresh_uneven_state()
 
@@ -169,7 +167,6 @@ class teamplay(minqlx.Plugin):
         sid = player.steam_id
         if new in ("red", "blue", "free"):
             # They acted on the warning, or came back after being benched.
-            self.team_join_times[sid] = time.time()
             self.warned.pop(sid, None)
             self.benched.pop(sid, None)
         self.refresh_uneven_state()
@@ -410,8 +407,7 @@ class teamplay(minqlx.Plugin):
 
         self.announced_move = False
 
-        # The player who joined last on the bigger team is the one who made the
-        # teams uneven, so they are the one who sits out.
+        # The last player to connect on the bigger team is the one who sits out.
         self.even_teams(plan)
 
         if balance:
@@ -452,8 +448,8 @@ class teamplay(minqlx.Plugin):
                 smaller.append(player)
                 plan.append((player, smaller_name, bigger_name))
             else:
-                # An odd gap means somebody has to sit out. That is the player
-                # who joined last, and we owe them no warning for it.
+                # An odd gap means somebody has to sit out. That is the last
+                # player to connect, and we owe them no warning for it.
                 plan.append((player, "spectator", bigger_name))
 
         return plan
@@ -511,7 +507,7 @@ class teamplay(minqlx.Plugin):
             sid = getattr(player, "steam_id", 0)
             if not sid or self.is_benched_this_round(sid):
                 continue
-            connected_for = now - self.connect_times.get(sid, 0)
+            connected_for = now - self.find_time(player)
             if connected_for < grace:
                 waiting.append((player, int(grace - connected_for)))
 
@@ -529,7 +525,7 @@ class teamplay(minqlx.Plugin):
                 self.benched[player.steam_id] = self.round_token
                 self.warned.pop(player.steam_id, None)
                 player.put("spectator")
-                self.msg("^6Uneven teams^7: {} joined last and was moved to spectator"
+                self.msg("^6Uneven teams^7: {} connected last and was moved to spectator"
                          .format(player.name))
             else:
                 player.put(destination)
@@ -537,16 +533,19 @@ class teamplay(minqlx.Plugin):
                          .format(player.name, origin, destination))
 
     def find_time(self, player):
-        """When this player last joined a team, stamping them if unknown.
+        """When this player connected, stamping them if unknown.
 
         Straight from autospec: a player we have never seen counts as having
-        arrived just now. That is what makes a reload mid-match harmless --
-        there is no separate path to get wrong.
+        arrived just now, which is what makes a reload mid-match harmless.
+
+        Connect time, not the time they last picked a team. Someone who has
+        been here an hour and switches sides has not just arrived, and should
+        not be the one sat down for it.
         """
         sid = player.steam_id
-        if sid not in self.team_join_times:
-            self.team_join_times[sid] = time.time()
-        return self.team_join_times[sid]
+        if sid not in self.connect_times:
+            self.connect_times[sid] = time.time()
+        return self.connect_times[sid]
 
     def last_joiner(self, team):
         """The player on this team who most recently joined it."""
@@ -590,7 +589,10 @@ class teamplay(minqlx.Plugin):
             sid = getattr(player, "steam_id", 0)
             if not sid or self.is_benched_this_round(sid):
                 continue
-            if now - self.connect_times.get(sid, 0) < grace:
+            # find_time, not a raw lookup: an unknown player counts as having
+            # just arrived, so after a reload spectators get their grace too
+            # instead of being warnable immediately.
+            if now - self.find_time(player) < grace:
                 continue
             targets.append(player)
         return targets
